@@ -16,7 +16,7 @@ export const MAX_MIRRORS = 2;
 const controlOf = (e: { session?: AndroidMirrorSession | IosMirrorSession } | undefined) =>
   e?.session instanceof AndroidMirrorSession ? e.session : undefined;
 const TOOLBAR_HEIGHT = 56; // keep in sync with mirror.css
-const FRAME_PAD_X = 36; // room for the device frame and side buttons (mirror.css #screen)
+const FRAME_PAD_X = 60; // room for the frame and side keys, well away from the resize edge (mirror.css #screen)
 const FRAME_PAD_Y = 28;
 const QUALITIES: Quality[] = ['low', 'medium', 'high'];
 

@@ -59,13 +59,54 @@ export class IosRunnerManager {
     }
   }
 
-  /** Unsigned runner products for this Xcode + source (built once). */
-  async build(xcode: string): Promise<{ app: string; xctestrun: string }> {
+  /** Identifies the runner source + Xcode version (the build cache key). */
+  buildHash(xcode: string): string {
     const hash = createHash('sha1').update(xcode);
     for (const f of ['DMRunner/DMRunnerTests.m', 'DMRunner/XCTestPrivate.h', 'DeviceMirrorRunner.xcodeproj/project.pbxproj']) {
       hash.update(readFileSync(path.join(this.projectDir, f)));
     }
-    const dir = path.join(this.cacheDir, `build-${hash.digest('hex').slice(0, 12)}`);
+    const icons = path.join(this.projectDir, 'Icon');
+    for (const f of existsSync(icons) ? readdirSync(icons).sort() : []) hash.update(readFileSync(path.join(icons, f)));
+    return hash.digest('hex').slice(0, 12);
+  }
+
+  /** Version stamp for a signed runner: same build + profile + certificate → same stamp. */
+  stamp(xcode: string, profile: ProfileInfo, source: SigningSource): string {
+    const h = createHash('sha1').update(this.buildHash(xcode)).update(profile.uuid).update(source.sha1).digest();
+    return `1.${h.readUInt32BE(0)}`; // CFBundleVersion: digits and dots only
+  }
+
+  /** The signed work folder from an earlier run, if it carries this stamp. */
+  signedFor(stamp: string): string | undefined {
+    const work = path.join(this.cacheDir, 'signed');
+    try {
+      const marker = JSON.parse(readFileSync(path.join(work, 'stamp.json'), 'utf8')) as { stamp: string };
+      const xctestrun = path.join(work, 'runner.xctestrun');
+      return marker.stamp === stamp && existsSync(xctestrun) ? xctestrun : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** CFBundleVersion of the runner installed on the device, if any. */
+  async installedVersion(udid: string, xctestrun: string): Promise<string | undefined> {
+    const app = path.join(path.dirname(xctestrun), 'Release-iphoneos', 'DeviceMirrorRunner-Runner.app');
+    const bundleId = (await run('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(app, 'Info.plist')])).trim();
+    const out = path.join(os.tmpdir(), `dm-apps-${randomBytes(4).toString('hex')}.json`);
+    try {
+      await run('/usr/bin/xcrun', ['devicectl', 'device', 'info', 'apps', '--device', udid, '--bundle-id', bundleId, '--json-output', out], { timeout: 30000 });
+      const apps = JSON.parse(readFileSync(out, 'utf8'))?.result?.apps ?? [];
+      return apps[0]?.bundleVersion;
+    } catch {
+      return undefined;
+    } finally {
+      rmSync(out, { force: true });
+    }
+  }
+
+  /** Unsigned runner products for this Xcode + source (built once). */
+  async build(xcode: string): Promise<{ app: string; xctestrun: string }> {
+    const dir = path.join(this.cacheDir, `build-${this.buildHash(xcode)}`);
     const products = path.join(dir, 'Build', 'Products');
     const find = () => {
       if (!existsSync(products)) return undefined;
@@ -91,7 +132,7 @@ export class IosRunnerManager {
   }
 
   /** Copies the products to a work folder and signs them for this profile. */
-  async sign(built: { app: string; xctestrun: string }, profile: ProfileInfo, profileData: Buffer, source: SigningSource, iconDir?: string): Promise<string> {
+  async sign(built: { app: string; xctestrun: string }, profile: ProfileInfo, profileData: Buffer, source: SigningSource, stamp: string, iconDir?: string): Promise<string> {
     const work = path.join(this.cacheDir, 'signed');
     rmSync(work, { recursive: true, force: true });
     mkdirSync(path.join(work, 'Release-iphoneos'), { recursive: true });
@@ -113,6 +154,7 @@ export class IosRunnerManager {
     }
     const bundleId = explicitId ?? (await run('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', infoPlist])).trim();
     await run('/usr/bin/plutil', ['-replace', 'CFBundleDisplayName', '-string', 'Device Mirror', infoPlist]);
+    await run('/usr/bin/plutil', ['-replace', 'CFBundleVersion', '-string', stamp, infoPlist]);
     if (iconDir) await this.applyIcon(app, iconDir);
 
     // Entitlements = the profile's, with this bundle id.
@@ -132,6 +174,7 @@ export class IosRunnerManager {
     } finally {
       if (keychain) await run('/usr/bin/security', ['delete-keychain', keychain.file]).catch(() => undefined);
     }
+    writeFileSync(path.join(work, 'stamp.json'), JSON.stringify({ stamp }));
     return xctestrun;
   }
 

@@ -197,22 +197,33 @@ export function registerTouchSetup(deps: TouchSetupDeps) {
     if (!xcode) return fail('sign', 'Touch control currently needs Xcode on this Mac. Install Xcode from the App Store and try again.');
     const identity = await store.findFor(udid);
     if (!identity) return fail('sign', 'No signing certificate is saved for this device. Choose "Use other files".');
-    let xctestrun: string;
-    try {
-      const built = await runner.build(xcode);
-      xctestrun = await runner.sign(built, identity.profile, identity.profileData, identity.source, deps.iconDir);
-    } catch (err) {
-      return fail('sign', (err as Error).message);
-    }
-    send({ id: 'sign', state: 'done' });
+    // Same runner, profile and certificate as last time, and already on the
+    // device: skip straight to launching.
+    const stamp = runner.stamp(xcode, identity.profile, identity.source);
+    let xctestrun = runner.signedFor(stamp);
+    const installed = xctestrun ? await runner.installedVersion(udid, xctestrun) : undefined;
+    if (xctestrun && installed === stamp) {
+      send({ id: 'sign', state: 'done', detail: 'Already prepared.' });
+      send({ id: 'install', state: 'done', detail: 'Already on the device.' });
+    } else {
+      try {
+        if (!xctestrun) {
+          const built = await runner.build(xcode);
+          xctestrun = await runner.sign(built, identity.profile, identity.profileData, identity.source, stamp, deps.iconDir);
+        }
+      } catch (err) {
+        return fail('sign', (err as Error).message);
+      }
+      send({ id: 'sign', state: 'done' });
 
-    send({ id: 'install', state: 'running' });
-    try {
-      await runner.install(udid, xctestrun);
-    } catch (err) {
-      return fail('install', `Installing failed: ${(err as Error).message}`);
+      send({ id: 'install', state: 'running' });
+      try {
+        await runner.install(udid, xctestrun);
+      } catch (err) {
+        return fail('install', `Installing failed: ${(err as Error).message}`);
+      }
+      send({ id: 'install', state: 'done' });
     }
-    send({ id: 'install', state: 'done' });
 
     send({ id: 'launch', state: 'running' });
     try {

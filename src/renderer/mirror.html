@@ -8,7 +8,9 @@
   </head>
   <body>
     <div id="stage">
-      <div id="bezel" hidden aria-hidden="false">
+      <div id="bezel" hidden></div>
+      <!-- Same box as the frame but ABOVE the screen, so the keys always get the click -->
+      <div id="keys" hidden>
         <button type="button" class="side-btn" data-btn="volumeUp" title="Volume up" aria-label="Volume up"></button>
         <button type="button" class="side-btn" data-btn="volumeDown" title="Volume down" aria-label="Volume down"></button>
         <button type="button" class="side-btn" data-btn="power" title="Power / lock" aria-label="Power"></button>

@@ -12,9 +12,9 @@ body {
 #grab { position: fixed; left: 0; right: 0; top: 0; height: 14px; z-index: 5; -webkit-app-region: drag; }
 /* Room around the screen for the device frame and its side buttons; keep in
    sync with FRAME_PAD_X / FRAME_PAD_Y in mirrorManager.ts */
-#screen { position: absolute; left: 18px; top: 14px; width: calc(100% - 36px); height: calc(100% - 28px); object-fit: contain; cursor: pointer; touch-action: none; }
+#screen { position: absolute; left: 30px; top: 14px; width: calc(100% - 60px); height: calc(100% - 28px); object-fit: contain; cursor: pointer; touch-action: none; }
 #overlay {
-  position: absolute; inset: 14px 18px; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+  position: absolute; inset: 14px 30px; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   background: rgba(11, 14, 20, 0.82); text-align: center; padding: 24px; transition: opacity 0.2s;
 }
 #overlay.hidden { opacity: 0; pointer-events: none; }
@@ -85,7 +85,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .ios-only { display: none; }
 .platform-ios .ios-only { display: grid; }
 
-#invite { position: absolute; inset: 14px 18px; border-radius: 28px; overflow: hidden; z-index: 3; display: grid; place-items: center; padding: 20px; background: rgba(8, 11, 18, 0.62); backdrop-filter: blur(2px); animation: fade-in 0.2s ease; }
+#invite { position: absolute; inset: 14px 30px; border-radius: 28px; overflow: hidden; z-index: 3; display: grid; place-items: center; padding: 20px; background: rgba(8, 11, 18, 0.62); backdrop-filter: blur(2px); animation: fade-in 0.2s ease; }
 #invite[hidden] { display: none; }
 @keyframes fade-in { from { opacity: 0; } }
 .invite-card {
@@ -189,21 +189,24 @@ button.link:hover { text-decoration: underline; }
   background: #07080a;
   box-shadow: inset 0 0 0 1.5px #5b626e, inset 0 0 0 3px #1b1e24, 0 0 0 1px #2a2f38, 0 14px 34px rgba(0, 0, 0, 0.55);
 }
-#bezel[hidden] { display: none; }
+#bezel[hidden], #keys[hidden] { display: none; }
+#keys { position: absolute; z-index: 4; pointer-events: none; }
 #screen { z-index: 1; }
 .side-btn {
-  position: absolute; width: 4px; padding: 0; border: 0; pointer-events: auto; cursor: pointer;
-  background: linear-gradient(90deg, #8b929e, #555b66); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.6);
+  position: absolute; width: 6px; padding: 0; border: 0; pointer-events: auto; cursor: pointer;
+  background: linear-gradient(90deg, #b9c0cc, #7b828e); box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.7), 0 1px 4px rgba(0, 0, 0, 0.45);
   transition: transform 0.12s ease, filter 0.12s ease;
 }
 /* Attached to the OUTSIDE of the frame, like real keys: hover nudges them in
    a hair, a press pushes them most of the way in. */
-.side-btn.left { right: calc(100% - 1px); border-radius: 3px 0 0 3px; background: linear-gradient(90deg, #8b929e, #5b626e); }
-.side-btn.right { left: calc(100% - 1px); border-radius: 0 3px 3px 0; background: linear-gradient(90deg, #5b626e, #8b929e); }
-.side-btn.left:hover { transform: translateX(0.5px); filter: brightness(1.25); }
-.side-btn.right:hover { transform: translateX(-0.5px); filter: brightness(1.25); }
-.side-btn.left:active, .side-btn.left.pressed { transform: translateX(2.5px); transition-duration: 0.05s; filter: brightness(0.85); }
-.side-btn.right:active, .side-btn.right.pressed { transform: translateX(-2.5px); transition-duration: 0.05s; filter: brightness(0.85); }
+.side-btn.left { right: calc(100% - 1px); border-radius: 4px 0 0 4px; background: linear-gradient(90deg, #c3cad6 0%, #9aa1ad 45%, #6c737f 100%); }
+.side-btn.right { left: calc(100% - 1px); border-radius: 0 4px 4px 0; background: linear-gradient(90deg, #6c737f 0%, #9aa1ad 55%, #c3cad6 100%); }
+/* Bigger invisible hit area so the keys are easy to click */
+.side-btn::after { content: ""; position: absolute; inset: -3px -6px; }
+.side-btn.left:hover { transform: translateX(0.75px); filter: brightness(1.25); }
+.side-btn.right:hover { transform: translateX(-0.75px); filter: brightness(1.25); }
+.side-btn.left:active, .side-btn.left.pressed { transform: translateX(3.5px); transition-duration: 0.05s; filter: brightness(0.85); }
+.side-btn.right:active, .side-btn.right.pressed { transform: translateX(-3.5px); transition-duration: 0.05s; filter: brightness(0.85); }
 .side-btn.locked { opacity: 0.45; cursor: not-allowed; }
 .side-btn[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .side-btn { transition: none; } }

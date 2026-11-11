@@ -273,7 +273,8 @@ api.onTouch((on) => {
 // that really work (Android: key events; iOS: through the touch runner).
 
 const bezel = document.getElementById('bezel') as HTMLDivElement;
-const sideButtons = [...bezel.querySelectorAll<HTMLButtonElement>('.side-btn')];
+const keys = document.getElementById('keys') as HTMLDivElement;
+const sideButtons = [...keys.querySelectorAll<HTMLButtonElement>('.side-btn')];
 
 /** Button placement per platform, as fractions of the frame height. */
 const BUTTON_LAYOUT: Record<'android' | 'ios', Record<string, { side: 'left' | 'right'; top: number; height: number }>> = {
@@ -282,7 +283,7 @@ const BUTTON_LAYOUT: Record<'android' | 'ios', Record<string, { side: 'left' | '
 };
 
 function layoutFrame() {
-  if (!frameW || !frameH) { bezel.hidden = true; return; }
+  if (!frameW || !frameH) { bezel.hidden = true; keys.hidden = true; return; }
   const box = canvas.getBoundingClientRect();
   const st = stage.getBoundingClientRect();
   const scale = Math.min(box.width / frameW, box.height / frameH);
@@ -301,6 +302,8 @@ function layoutFrame() {
     borderRadius: `${radius + border}px`,
   });
   bezel.hidden = false;
+  Object.assign(keys.style, { left: bezel.style.left, top: bezel.style.top, width: bezel.style.width, height: bezel.style.height });
+  keys.hidden = false;
   const layout = BUTTON_LAYOUT[platform];
   for (const b of sideButtons) {
     const spec = layout[b.dataset.btn!];
