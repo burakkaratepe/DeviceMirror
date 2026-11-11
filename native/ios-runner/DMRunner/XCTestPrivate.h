@@ -14,6 +14,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)pressDownAtOffset:(double)offset;
 - (void)moveToPoint:(CGPoint)point atOffset:(double)offset;
 - (void)liftUpAtOffset:(double)offset;
+- (instancetype)initForTextInput;
+- (void)typeText:(NSString *)text atOffset:(double)offset typingSpeed:(unsigned long long)speed shouldRedact:(BOOL)redact;
 @end
 
 @interface XCSynthesizedEventRecord : NSObject

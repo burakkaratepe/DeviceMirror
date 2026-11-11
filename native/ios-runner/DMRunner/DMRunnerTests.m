@@ -2,16 +2,26 @@
 //
 // A single long-running UI "test" that listens on a TCP port on the device.
 // The Mac reaches it through usbmuxd (no HTTP, no JSON, no iproxy) and sends
-// fixed-size binary commands; each one becomes a synthesized touch event
-// immediately, without XCUITest's quiescence waits or accessibility queries.
+// small binary commands; each becomes ONE synthesized event, sent straight to
+// the XCTest daemon without XCUITest's quiescence waits or accessibility
+// queries.
+//
+// Apple's daemon runs one event at a time and stays busy ~260 ms per event
+// (measured on Xcode 26 / iOS 27; events sent meanwhile are rejected, and HID
+// recording playback is slower still), so a whole gesture always travels as a
+// single event: a tap, a long press, or a complete drag path with its timing.
 //
 // Wire format (little endian).
-// Mac → device, 16 bytes:  u8 op, u8 pad[3], f32 x, f32 y, u32 seq
-//   op 1 down, 2 move, 3 up, 4 tap, 5 home, 6 ping
+// Mac → device: header 8 bytes  u8 op, u8 pad, u16 count, u32 seq
+//   op 1 tap      payload f32 x, f32 y, f32 holdSeconds
+//   op 2 gesture  payload count × (f32 x, f32 y, f32 seconds since start)
+//   op 3 text     payload count bytes of UTF-8
+//   op 4 home
+//   op 6 ping
 //   x/y are normalized 0…1 of the portrait screen.
 // Device → Mac:
-//   hello  16 bytes: u8 0x80, u8 pad[3], f32 width pt, f32 height pt, f32 scale
-//   ack    12 bytes: u8 0x81, u8 ok, u8 pad[2], u32 seq, u32 micros (receive → event delivered)
+//   hello 16 bytes: u8 0x80, u8 version, u8 pad[2], f32 width pt, f32 height pt, f32 scale
+//   ack   12 bytes: u8 0x81, u8 ok, u8 pad[2], u32 seq, u32 micros (received → delivered)
 
 #import <XCTest/XCTest.h>
 #import <netinet/in.h>
@@ -21,14 +31,14 @@
 #import "XCTestPrivate.h"
 
 static const uint16_t kPort = 47310;
+static const uint8_t kProtocolVersion = 1;
 
 typedef struct __attribute__((packed)) {
   uint8_t op;
-  uint8_t pad[3];
-  float x;
-  float y;
+  uint8_t pad;
+  uint16_t count;
   uint32_t seq;
-} DMCommand;
+} DMHeader;
 
 static double nowMicros(void) {
   static mach_timebase_info_data_t tb;
@@ -36,15 +46,57 @@ static double nowMicros(void) {
   return (double)mach_absolute_time() * tb.numer / tb.denom / 1000.0;
 }
 
-static XCPointerEventPath *touchPath(CGPoint p);
+static BOOL readFully(int fd, void *buf, size_t n) {
+  size_t got = 0;
+  while (got < n) {
+    ssize_t r = recv(fd, (uint8_t *)buf + got, n - got, 0);
+    if (r <= 0) return NO;
+    got += (size_t)r;
+  }
+  return YES;
+}
+
+#pragma mark - Event synthesis
+
+// Private classes are looked up at run time: they have moved between XCTest
+// frameworks across Xcode versions, so linking to one would be fragile.
+static XCPointerEventPath *touchPath(CGPoint p) {
+  return [[NSClassFromString(@"XCPointerEventPath") alloc] initForTouchAtPoint:p offset:0];
+}
+
+/// The test daemon's proxy: calling it directly skips the wrapper's extra work.
+static id daemonProxy(void) {
+  static id proxy;
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    proxy = [[NSClassFromString(@"XCTRunnerDaemonSession") sharedSession] valueForKey:@"daemonProxy"];
+  });
+  return proxy;
+}
+
+/// Sends one event record and waits for delivery (the daemon takes one at a time).
+static BOOL synthesize(XCPointerEventPath *path) {
+  XCSynthesizedEventRecord *record = [[NSClassFromString(@"XCSynthesizedEventRecord") alloc] initWithName:@"Single-Finger Touch Action" interfaceOrientation:UIInterfaceOrientationPortrait];
+  [record addPointerEventPath:path];
+  SEL sel = NSSelectorFromString(@"_XCT_synthesizeEvent:completion:");
+  id proxy = daemonProxy();
+  void (*call)(id, SEL, id, void (^)(NSError *)) = (void *)[proxy methodForSelector:sel];
+  dispatch_semaphore_t done = dispatch_semaphore_create(0);
+  __block NSError *failure = nil;
+  call(proxy, sel, record, ^(NSError *error) {
+    failure = error;
+    dispatch_semaphore_signal(done);
+  });
+  if (dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)) != 0) return NO;
+  if (failure) NSLog(@"[DMRunner] event failed: %@", failure);
+  return failure == nil;
+}
 
 @interface DMRunnerTests : XCTestCase
 @end
 
 @implementation DMRunnerTests {
-  CGSize _screen;        // portrait size in points
-  CGPoint _last;         // last touch position (points)
-  BOOL _down;
+  CGSize _screen; // portrait size in points
   dispatch_queue_t _events;
 }
 
@@ -59,7 +111,6 @@ static XCPointerEventPath *touchPath(CGPoint p);
   _events = dispatch_queue_create("dm.events", DISPATCH_QUEUE_SERIAL);
   [NSThread detachNewThreadWithBlock:^{ [self serve]; }];
   NSLog(@"[DMRunner] listening on %u, screen %.0fx%.0f", kPort, _screen.width, _screen.height);
-  // Keep the test (and thus the runner process) alive forever.
   while (YES) {
     @autoreleasepool { [[NSRunLoop mainRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:3600]]; }
   }
@@ -71,7 +122,7 @@ static XCPointerEventPath *touchPath(CGPoint p);
   int server = socket(AF_INET6, SOCK_STREAM, 0);
   int yes = 1, no = 0;
   setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
-  setsockopt(server, IPPROTO_IPV6, IPV6_V6ONLY, &no, sizeof(no)); // accept IPv4 too
+  setsockopt(server, IPPROTO_IPV6, IPV6_V6ONLY, &no, sizeof(no));
   struct sockaddr_in6 addr = {0};
   addr.sin6_len = sizeof(addr);
   addr.sin6_family = AF_INET6;
@@ -91,42 +142,29 @@ static XCPointerEventPath *touchPath(CGPoint p);
   }
 }
 
-static BOOL readFully(int fd, void *buf, size_t n) {
-  size_t got = 0;
-  while (got < n) {
-    ssize_t r = recv(fd, (uint8_t *)buf + got, n - got, 0);
-    if (r <= 0) return NO;
-    got += (size_t)r;
-  }
-  return YES;
-}
-
 - (void)handle:(int)fd {
-  uint8_t hello[16] = {0x80};
+  uint8_t hello[16] = {0x80, kProtocolVersion};
   float dims[3] = {(float)_screen.width, (float)_screen.height, (float)UIScreen.mainScreen.nativeScale};
   memcpy(hello + 4, dims, sizeof(dims));
   send(fd, hello, sizeof(hello), 0);
 
-  DMCommand cmd;
-  while (readFully(fd, &cmd, sizeof(cmd))) {
+  DMHeader h;
+  while (readFully(fd, &h, sizeof(h))) {
     double received = nowMicros();
-    CGPoint p = CGPointMake(cmd.x * _screen.width, cmd.y * _screen.height);
-    uint32_t seq = cmd.seq;
-    uint8_t op = cmd.op;
-    if (op == 0x44) { // experimental: async tap, ack when the daemon reports completion
-      XCPointerEventPath *path = touchPath(p);
-      [path liftUpAtOffset:0.03];
-      [self synthesizeAsync:path done:^(BOOL ok) {
-        uint8_t ack[12] = {0x81, ok ? 1 : 0};
-        uint32_t micros = (uint32_t)(nowMicros() - received);
-        memcpy(ack + 4, &seq, 4);
-        memcpy(ack + 8, &micros, 4);
-        send(fd, ack, sizeof(ack), 0);
-      }];
-      continue;
+    size_t payloadSize = 0;
+    switch (h.op) {
+      case 1: payloadSize = 12; break;
+      case 2: payloadSize = (size_t)h.count * 12; break;
+      case 3: payloadSize = h.count; break;
+      default: payloadSize = 0;
     }
+    NSMutableData *payload = [NSMutableData dataWithLength:payloadSize];
+    if (payloadSize && !readFully(fd, payload.mutableBytes, payloadSize)) break;
+    uint8_t op = h.op;
+    uint16_t count = h.count;
+    uint32_t seq = h.seq;
     dispatch_async(_events, ^{
-      BOOL ok = [self perform:op at:p];
+      BOOL ok = [self perform:op count:count payload:payload];
       uint8_t ack[12] = {0x81, ok ? 1 : 0};
       uint32_t micros = (uint32_t)(nowMicros() - received);
       memcpy(ack + 4, &seq, 4);
@@ -134,92 +172,42 @@ static BOOL readFully(int fd, void *buf, size_t n) {
       send(fd, ack, sizeof(ack), 0);
     });
   }
-  // Connection gone: never leave a finger on the screen.
-  dispatch_async(_events, ^{ if (self->_down) [self perform:3 at:self->_last]; });
 }
 
-#pragma mark - Events
-
-// Private classes are looked up at run time: they have moved between XCTest
-// frameworks across Xcode versions, so linking to one would be fragile.
-static XCPointerEventPath *touchPath(CGPoint p) {
-  return [[NSClassFromString(@"XCPointerEventPath") alloc] initForTouchAtPoint:p offset:0];
+- (CGPoint)point:(const float *)xy {
+  return CGPointMake(xy[0] * _screen.width, xy[1] * _screen.height);
 }
 
-/// The test daemon's proxy. Calling it directly skips the extra settling the
-/// XCTRunnerDaemonSession wrapper adds after each event.
-static id daemonProxy(void) {
-  static id proxy;
-  static dispatch_once_t once;
-  dispatch_once(&once, ^{
-    id session = [NSClassFromString(@"XCTRunnerDaemonSession") sharedSession];
-    proxy = [session valueForKey:@"daemonProxy"];
-  });
-  return proxy;
-}
-
-/// Fire-and-forget straight to the daemon; completion reports delivery.
-- (void)synthesizeAsync:(XCPointerEventPath *)path done:(void (^)(BOOL ok))done {
-  XCSynthesizedEventRecord *record = [[NSClassFromString(@"XCSynthesizedEventRecord") alloc] initWithName:@"Single-Finger Touch Action" interfaceOrientation:UIInterfaceOrientationPortrait];
-  [record addPointerEventPath:path];
-  id proxy = daemonProxy();
-  // The daemon waits an "implicit confirmation interval" after each event
-  // before it reports completion and accepts the next one; ask for none.
-  SEL sel = NSSelectorFromString(@"_XCT_synthesizeEvent:implicitConfirmationInterval:completion:");
-  void (*call)(id, SEL, id, double, void (^)(NSError *)) = (void *)[proxy methodForSelector:sel];
-  call(proxy, sel, record, 0.001, ^(NSError *error) {
-    if (error) NSLog(@"[DMRunner] daemon event failed: %@", error);
-    done(error == nil);
-  });
-}
-
-/// Runs one synthesized event and waits for delivery, so events stay ordered.
-- (BOOL)synthesize:(XCPointerEventPath *)path {
-  XCSynthesizedEventRecord *record = [[NSClassFromString(@"XCSynthesizedEventRecord") alloc] initWithName:nil interfaceOrientation:UIInterfaceOrientationPortrait];
-  [record addPointerEventPath:path];
-  dispatch_semaphore_t done = dispatch_semaphore_create(0);
-  __block NSError *failure = nil;
-  __block BOOL success = NO;
-  [[NSClassFromString(@"XCTRunnerDaemonSession") sharedSession] synthesizeEvent:record completion:^(BOOL ok, NSError *error) {
-    success = ok;
-    failure = error;
-    dispatch_semaphore_signal(done);
-  }];
-  dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC));
-  if (!success) NSLog(@"[DMRunner] event failed: %@", failure);
-  return success;
-}
-
-- (BOOL)perform:(uint8_t)op at:(CGPoint)p {
+- (BOOL)perform:(uint8_t)op count:(uint16_t)count payload:(NSData *)payload {
+  const float *f = payload.bytes;
   switch (op) {
-    case 1: { // down: finger stays on the glass until "up"
-      XCPointerEventPath *path = touchPath(p);
-      _down = YES;
-      _last = p;
-      return [self synthesize:path];
+    case 1: { // tap / long press
+      XCPointerEventPath *path = touchPath([self point:f]);
+      [path liftUpAtOffset:MAX(0.02, f[2])];
+      return synthesize(path);
     }
-    case 2: { // move
-      if (!_down) return YES;
-      XCPointerEventPath *path = touchPath(_last);
-      [path moveToPoint:p atOffset:0.001];
-      _last = p;
-      return [self synthesize:path];
+    case 2: { // full drag path with its real timing
+      if (count < 2) return NO;
+      XCPointerEventPath *path = touchPath([self point:f]);
+      double last = 0;
+      for (uint16_t i = 1; i < count; i++) {
+        const float *pt = f + i * 3;
+        last = MAX(last + 0.001, pt[2]);
+        [path moveToPoint:[self point:pt] atOffset:last];
+      }
+      [path liftUpAtOffset:last + 0.01];
+      return synthesize(path);
     }
-    case 3: { // up
-      XCPointerEventPath *path = touchPath(_down ? _last : p);
-      [path liftUpAtOffset:0.001];
-      _down = NO;
-      return [self synthesize:path];
+    case 3: { // text
+      NSString *text = [[NSString alloc] initWithData:payload encoding:NSUTF8StringEncoding];
+      if (!text.length) return YES;
+      XCPointerEventPath *path = [[NSClassFromString(@"XCPointerEventPath") alloc] initForTextInput];
+      [path typeText:text atOffset:0 typingSpeed:60 shouldRedact:NO];
+      return synthesize(path);
     }
-    case 4: { // tap in one event
-      XCPointerEventPath *path = touchPath(p);
-      [path liftUpAtOffset:0.03];
-      return [self synthesize:path];
-    }
-    case 5: {
+    case 4:
       [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonHome];
       return YES;
-    }
     default: // ping
       return YES;
   }

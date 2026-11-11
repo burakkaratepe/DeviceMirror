@@ -2,7 +2,7 @@
 
 Mirror and control Android and iOS devices from macOS, Windows and Linux.
 
-Status: **Phase 4** — live device list (Android + iOS) with marketing names and screenshot previews; Android mirroring with touch + keyboard; iOS mirroring on macOS with the touch-control setup flow (invite, signing check, encrypted storage; runner arrives in Phase 5). One window per device, up to 2 at a time, Low/Medium/High quality per device.
+Status: **Phase 5** — device list with marketing names and previews; Android mirroring with touch + keyboard; iOS mirroring on macOS with touch control (XCUITest runner: tap, long press, drag, scroll, typing incl. Turkish, Home). One window per device, up to 2 at a time, Low/Medium/High quality per device.
 
 ## Development
 
@@ -24,4 +24,5 @@ npm run dist                 # package for the current OS into release/
 - **Android:** talks to the adb server over its host protocol (TCP 5037, `host:track-devices-l`); the `adb` binary is only used to start the server.
 - **Android mirroring:** pushes scrcpy-server 5.0.1 (adb sync protocol), starts it with `app_process`, reads H.264 over an adb forward and decodes it with WebCodecs in the mirror window. Touch, scroll and Back/Home/Recents go back over scrcpy's control socket. `node dist/probeMirror.js <serial>` checks the stream headlessly.
 - **iOS mirroring (macOS):** `native/ios-capture` (Swift, ~220 KB universal) enables CoreMediaIO screen-capture devices, opens the iPhone as a muxed AVCaptureDevice (matched by name; macOS no longer exposes the UDID), re-encodes with VideoToolbox (low-latency H.264) and streams framed packets over stdout. Needs camera permission; no developer mode or DDI.
+- **iOS touch (macOS + Xcode):** `native/ios-runner` is a single XCUITest bundle that listens on a device port reached through usbmuxd (binary protocol, ~0.7 ms round trip) and synthesizes events straight through the XCTest daemon proxy. Apple's daemon handles one event at a time (~260 ms each), so a gesture travels as one event: tap, long press, full drag path on release, wheel → swipe, typed text. The app builds the runner unsigned once (cached per Xcode version), re-signs it with the keychain identity or a .p12 in a throwaway keychain, installs it with devicectl and starts it with `xcodebuild test-without-building`. `scripts/dev-runner.sh <profile> <udid>` does the same by hand.
 - **iOS:** speaks the usbmuxd protocol directly (`/var/run/usbmuxd`, or `127.0.0.1:27015` on Windows) for attach/detach events, pair-record checks and basic lockdown values. No libimobiledevice or go-ios needed for listing.

@@ -27,6 +27,8 @@ export interface ProfileInfo {
   allDevices: boolean;
   getTaskAllow: boolean;
   certificateSha1s: string[];
+  /** Raw entitlements from the profile (used when re-signing the runner). */
+  entitlements: Record<string, PlistValue>;
 }
 
 export class SigningError extends Error {}
@@ -87,6 +89,7 @@ export function readProfile(data: Buffer): ProfileInfo {
     allDevices: plist.ProvisionsAllDevices === true,
     getTaskAllow: ent['get-task-allow'] === true,
     certificateSha1s: certs.filter(Buffer.isBuffer).map((b) => sha1(b as Buffer)),
+    entitlements: ent,
   };
 }
 

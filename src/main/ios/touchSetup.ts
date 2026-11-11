@@ -13,6 +13,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import os from 'node:os';
 import path from 'node:path';
 import { keychainIdentities, type KeychainIdentity } from './keychain';
+import { RunnerError, type IosRunnerManager, type SigningSource } from './runner';
 import { checkSigning, readP12, readProfile, SigningError, type CertificateInfo, type ProfileInfo } from './signing';
 import type { Device, ProfileInspection, SetupStep, SigningResult, StoredIdentitySummary } from '../../shared/types';
 
@@ -47,7 +48,7 @@ export class SigningStore {
   }
 
   /** A saved choice that is still valid for this device, if any. */
-  async findFor(udid: string): Promise<{ cert: CertificateInfo; profile: ProfileInfo; fromKeychain: boolean } | undefined> {
+  async findFor(udid: string): Promise<{ cert: CertificateInfo; profile: ProfileInfo; fromKeychain: boolean; profileData: Buffer; source: SigningSource } | undefined> {
     let files: string[] = [];
     try { files = readdirSync(this.dir).filter((f) => f.endsWith('.identity')); } catch { /* none yet */ }
     const keychain = files.length ? await keychainIdentities() : [];
@@ -55,9 +56,14 @@ export class SigningStore {
       const id = this.load(f);
       if (!id) continue;
       try {
-        const profile = readProfile(Buffer.from(id.profile, 'base64'));
+        const profileData = Buffer.from(id.profile, 'base64');
+        const profile = readProfile(profileData);
         const cert = id.kind === 'keychain' ? keychain.find((k) => k.sha1 === id.sha1) : readP12(Buffer.from(id.p12, 'base64'), id.password);
-        if (cert && checkSigning(cert, profile, udid).length === 0) return { cert, profile, fromKeychain: id.kind === 'keychain' };
+        if (!cert || checkSigning(cert, profile, udid).length) continue;
+        const source: SigningSource = id.kind === 'keychain'
+          ? { kind: 'keychain', sha1: cert.sha1 }
+          : { kind: 'p12', p12: Buffer.from(id.p12, 'base64'), password: id.password, sha1: cert.sha1 };
+        return { cert, profile, fromKeychain: id.kind === 'keychain', profileData, source };
       } catch {
         // damaged entry: skip
       }
@@ -101,7 +107,19 @@ function suggestLocalProfile(udid: string, ids: KeychainIdentity[]): ProfileInsp
   return undefined;
 }
 
-export function registerTouchSetup(store: SigningStore, deviceFor: (wc: WebContents) => Device | undefined, windowFor: (wc: WebContents) => BrowserWindow | undefined) {
+export interface TouchSetupDeps {
+  store: SigningStore;
+  runner: IosRunnerManager;
+  /** Folder with the runner's AppIcon*.png files. */
+  iconDir: string;
+  deviceFor(wc: WebContents): Device | undefined;
+  windowFor(wc: WebContents): BrowserWindow | undefined;
+  /** The runner is up on this device: connect touch for its mirror window. */
+  onRunnerReady(deviceId: string, udid: string): Promise<void>;
+}
+
+export function registerTouchSetup(deps: TouchSetupDeps) {
+  const { store, deviceFor, windowFor } = deps;
   ipcMain.handle('touch:saved', async (e): Promise<StoredIdentitySummary | undefined> => {
     const d = deviceFor(e.sender);
     const found = d ? await store.findFor(d.serial) : undefined;
@@ -162,15 +180,47 @@ export function registerTouchSetup(store: SigningStore, deviceFor: (wc: WebConte
 
   ipcMain.handle('touch:setup', async (e) => {
     const d = deviceFor(e.sender);
-    const send = (s: SetupStep) => { if (!e.sender.isDestroyed()) e.sender.send('touch:step', s); };
-    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    send({ id: 'trust', state: d?.state === 'ready' ? 'done' : 'error', detail: d?.state === 'ready' ? undefined : 'Unlock the device and tap "Trust This Computer".' });
-    if (d?.state !== 'ready') return;
-    // Placeholders until Phase 5 installs and launches the real runner.
-    for (const id of ['developerMode', 'sign', 'install', 'launch'] as const) {
-      send({ id, state: 'running' });
-      await wait(450);
-      send({ id, state: id === 'launch' ? 'pending' : 'done', detail: id === 'launch' ? 'Touch control arrives in the next update.' : undefined });
+    const send = (st: SetupStep) => { if (!e.sender.isDestroyed()) e.sender.send('touch:step', st); };
+    const fail = (id: SetupStep['id'], detail: string) => { send({ id, state: 'error', detail }); };
+    if (d?.state !== 'ready') return fail('trust', 'Unlock the device and tap "Trust This Computer".');
+    send({ id: 'trust', state: 'done' });
+    const udid = d.serial;
+    const { runner } = deps;
+
+    send({ id: 'developerMode', state: 'running' });
+    const devMode = await runner.developerMode(udid);
+    if (devMode === false) return fail('developerMode', 'Turn on Developer Mode: Settings → Privacy & Security → Developer Mode. The device restarts once.');
+    send({ id: 'developerMode', state: 'done', detail: devMode === undefined ? 'Could not check; continuing.' : undefined });
+
+    send({ id: 'sign', state: 'running', detail: 'Preparing the helper app. The first time takes about a minute.' });
+    const xcode = await runner.xcodeVersion();
+    if (!xcode) return fail('sign', 'Touch control currently needs Xcode on this Mac. Install Xcode from the App Store and try again.');
+    const identity = await store.findFor(udid);
+    if (!identity) return fail('sign', 'No signing certificate is saved for this device. Choose "Use other files".');
+    let xctestrun: string;
+    try {
+      const built = await runner.build(xcode);
+      xctestrun = await runner.sign(built, identity.profile, identity.profileData, identity.source, deps.iconDir);
+    } catch (err) {
+      return fail('sign', (err as Error).message);
     }
+    send({ id: 'sign', state: 'done' });
+
+    send({ id: 'install', state: 'running' });
+    try {
+      await runner.install(udid, xctestrun);
+    } catch (err) {
+      return fail('install', `Installing failed: ${(err as Error).message}`);
+    }
+    send({ id: 'install', state: 'done' });
+
+    send({ id: 'launch', state: 'running' });
+    try {
+      await runner.launch(udid, xctestrun);
+      await deps.onRunnerReady(d.id, udid);
+    } catch (err) {
+      return fail('launch', err instanceof RunnerError ? err.message : `Could not start touch control: ${(err as Error).message}`);
+    }
+    send({ id: 'launch', state: 'done', detail: 'Touch control is on.' });
   });
 }

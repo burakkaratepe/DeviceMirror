@@ -93,6 +93,13 @@ export interface MirrorWindowApi {
   runSetup(): Promise<void>;
   onSetupStep(cb: (s: SetupStep) => void): void;
   copyText(text: string): void;
+  // iOS touch control (once the runner is connected)
+  onTouch(cb: (on: boolean) => void): void;
+  iosTap(x: number, y: number, holdSeconds: number): void;
+  iosGesture(points: { x: number; y: number; t: number }[]): void;
+  iosText(text: string): void;
+  iosHome(): void;
+  notice?(text: string): void;
 }
 
 export interface Preview {

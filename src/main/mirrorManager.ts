@@ -5,6 +5,7 @@ import path from 'node:path';
 import { shell } from './android/adb';
 import { AndroidMirrorSession, QUALITY_PARAMS, type SessionEvents } from './android/scrcpy';
 import { IosMirrorSession } from './ios/iosCapture';
+import { IosTouchClient } from './ios/touchClient';
 import { parseKeyboardLayout } from './keyboardLayout';
 import type { Settings } from './settings';
 import type { Device, MirrorInfo, MirrorResult, MirrorStatus, Quality } from '../shared/types';
@@ -21,6 +22,8 @@ interface Entry {
   device: Device;
   win: BrowserWindow;
   session?: AndroidMirrorSession | IosMirrorSession;
+  /** iOS: connection to the touch runner once touch control is on. */
+  touch?: IosTouchClient;
   /** Last frame size, to keep the window's aspect ratio in step with rotation. */
   size?: { width: number; height: number };
   status: MirrorStatus;
@@ -34,6 +37,8 @@ export interface MirrorDeps {
   findDevice(id: string): Device | undefined;
   /** Called when the set of mirrored devices or a quality changes. */
   onChange(): void;
+  /** iOS: true when the touch runner is already running for this UDID. */
+  runnerRunning?(udid: string): boolean;
 }
 
 export class MirrorManager {
@@ -71,12 +76,29 @@ export class MirrorManager {
     });
     ipcMain.on('mirror:paste', async (e) => {
       const text = await clipboard.readText(); // async in recent Electron versions
-      if (text) controlOf(entryFor(e))?.setClipboard(text, true);
+      if (!text) return;
+      const entry = entryFor(e);
+      if (entry?.touch) void entry.touch.text(text);
+      else controlOf(entry)?.setClipboard(text, true);
     });
     ipcMain.on('mirror:quality', (e, q: unknown) => {
       const entry = entryFor(e);
       if (entry && QUALITIES.includes(q as Quality)) this.setQuality(entry.device.id, q as Quality);
     });
+    const touchOf = (e: IpcMainEvent) => entryFor(e)?.touch;
+    const n = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : NaN;
+    ipcMain.on('ios:tap', (e, x: unknown, y: unknown, hold: unknown) => {
+      const hx = n(x), hy = n(y);
+      if (!Number.isNaN(hx) && !Number.isNaN(hy)) void touchOf(e)?.tap(hx, hy, typeof hold === 'number' ? Math.min(5, Math.max(0.02, hold)) : 0.03);
+    });
+    ipcMain.on('ios:gesture', (e, pts: unknown) => {
+      if (!Array.isArray(pts)) return;
+      const clean = pts.map((p) => ({ x: n(p?.x), y: n(p?.y), t: typeof p?.t === 'number' ? Math.max(0, Math.min(10, p.t)) : NaN }))
+        .filter((p) => !Number.isNaN(p.x) && !Number.isNaN(p.y) && !Number.isNaN(p.t));
+      if (clean.length >= 2) void touchOf(e)?.gesture(clean);
+    });
+    ipcMain.on('ios:text', (e, text: unknown) => { if (typeof text === 'string' && text) void touchOf(e)?.text(text); });
+    ipcMain.on('ios:home', (e) => void touchOf(e)?.home());
     ipcMain.on('mirror:copy', (_e, text: unknown) => { if (typeof text === 'string' && text.length < 200) clipboard.writeText(text); });
     ipcMain.on('mirror:retry', (e) => {
       const entry = entryFor(e);
@@ -85,6 +107,22 @@ export class MirrorManager {
   }
 
   isMirroring(id: string): boolean { return this.entries.has(id); }
+
+  /** Connects the touch runner to the device's mirror window (iOS). */
+  async attachTouch(deviceId: string, udid: string) {
+    const e = this.entries.get(deviceId);
+    if (!e) return;
+    e.touch?.close();
+    const client = await IosTouchClient.connect(udid);
+    if (this.entries.get(deviceId) !== e) { client.close(); return; }
+    e.touch = client;
+    client.onClose = () => {
+      if (e.touch !== client) return;
+      e.touch = undefined;
+      this.send(e, 'mirror:touch', false);
+    };
+    this.send(e, 'mirror:touch', true);
+  }
 
   /** The device / window behind a mirror window's webContents (for IPC handlers). */
   deviceFor(wc: WebContents): Device | undefined { return [...this.entries.values()].find((x) => x.win.webContents === wc)?.device; }
@@ -109,10 +147,15 @@ export class MirrorManager {
     this.entries.set(device.id, entry);
     entry.win.on('closed', () => {
       entry.session?.close();
+      entry.touch?.close();
       if (this.entries.get(device.id) === entry) this.entries.delete(device.id);
       this.deps.onChange();
     });
-    entry.win.webContents.once('did-finish-load', () => void this.startSession(entry));
+    entry.win.webContents.once('did-finish-load', () => {
+      void this.startSession(entry);
+      // Touch runner still running from before: reconnect without the setup flow.
+      if (device.platform === 'ios' && this.deps.runnerRunning?.(device.serial)) void this.attachTouch(device.id, device.serial).catch(() => undefined);
+    });
     this.deps.onChange();
     return { ok: true };
   }
@@ -122,6 +165,7 @@ export class MirrorManager {
     if (!e) return;
     this.entries.delete(id);
     e.session?.close();
+    e.touch?.close();
     if (!e.win.isDestroyed()) e.win.close();
     this.deps.onChange();
   }

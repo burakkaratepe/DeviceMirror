@@ -4,6 +4,7 @@
 import type { MirrorStatus, MirrorVideo, MirrorWindowApi, Quality } from '../shared/types';
 import { HidKeyboard } from './hidKeyboard';
 import { initTouchSetup } from './touchSetupUi';
+import { initIosTouch } from './iosTouchUi';
 
 declare global {
   interface Window { mirror: MirrorWindowApi }
@@ -131,7 +132,10 @@ void api.info().then((i) => { if (i) { applyInfo(i); if (!isLive) showStatus({ s
 // ---- navigation keys ---------------------------------------------------
 
 for (const b of document.querySelectorAll<HTMLButtonElement>('.nav-keys button')) {
-  b.addEventListener('click', () => api.key(Number(b.dataset.key)));
+  b.addEventListener('click', () => {
+    if (platform === 'ios') { if (b.dataset.key === '3') api.iosHome(); return; }
+    api.key(Number(b.dataset.key));
+  });
 }
 
 // Toolbar buttons must not keep keyboard focus, or Space/Enter would press
@@ -250,3 +254,15 @@ canvas.addEventListener('wheel', (e) => {
   const unit = e.deltaMode === 1 ? 1 : 1 / 40; // lines vs pixels → scroll "clicks"
   api.scroll(p.x, p.y, -e.deltaX * unit, -e.deltaY * unit);
 }, { passive: false });
+
+// ---- iOS touch control -------------------------------------------------
+
+const stage = document.getElementById('stage') as HTMLDivElement;
+const iosTouch = initIosTouch(api, canvas, stage, toFrame, () => ({ w: frameW, h: frameH }));
+api.onTouch((on) => {
+  iosTouch.setEnabled(on && platform === 'ios');
+  document.body.classList.toggle('touch-on', on);
+  const btn = document.getElementById('touch-enable') as HTMLButtonElement;
+  btn.title = on ? 'Touch control is on' : 'Enable touch control';
+  if (on) (document.getElementById('invite') as HTMLDivElement).hidden = true;
+});

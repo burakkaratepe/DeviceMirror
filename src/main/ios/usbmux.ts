@@ -228,3 +228,15 @@ function usbmuxMissingMessage(): string {
   if (process.platform === 'linux') return 'usbmuxd is not running. Install the usbmuxd package to detect iOS devices.';
   return 'usbmuxd is not available. iOS devices cannot be detected.';
 }
+
+/** usbmuxd's current DeviceID for a UDID connected over USB. */
+export async function usbDeviceId(udid: string): Promise<number | undefined> {
+  const reply = await oneShot({ ...baseMsg('ListDevices') });
+  const list = Array.isArray(reply.DeviceList) ? reply.DeviceList.map(asDict) : [];
+  const want = udid.replace(/-/g, '').toLowerCase();
+  const hit = list.find((d) => {
+    const p = asDict(d.Properties);
+    return String(p.SerialNumber ?? '').replace(/-/g, '').toLowerCase() === want && p.ConnectionType === 'USB';
+  });
+  return hit ? Number(hit.DeviceID) : undefined;
+}

@@ -23,6 +23,11 @@ const api: MirrorWindowApi = {
   runSetup: () => ipcRenderer.invoke('touch:setup'),
   onSetupStep: (cb) => { ipcRenderer.on('touch:step', (_e, s: SetupStep) => cb(s)); },
   copyText: (text) => ipcRenderer.send('mirror:copy', text),
+  onTouch: (cb) => { ipcRenderer.on('mirror:touch', (_e, on: boolean) => cb(on)); },
+  iosTap: (x, y, hold) => ipcRenderer.send('ios:tap', x, y, hold),
+  iosGesture: (points) => ipcRenderer.send('ios:gesture', points),
+  iosText: (text) => ipcRenderer.send('ios:text', text),
+  iosHome: () => ipcRenderer.send('ios:home'),
 };
 
 contextBridge.exposeInMainWorld('mirror', api);

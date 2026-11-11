@@ -55,6 +55,15 @@
       {
         "from": "resources/android-models.tsv.gz",
         "to": "android-models.tsv.gz"
+      },
+      {
+        "from": "native/ios-runner",
+        "to": "ios-runner",
+        "filter": [
+          "**/*",
+          "!**/xcuserdata/**",
+          "!**/*.xcworkspace/**"
+        ]
       }
     ],
     "mac": {

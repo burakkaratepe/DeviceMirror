@@ -145,3 +145,18 @@ input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 button.link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; cursor: pointer; }
 button.link:hover { text-decoration: underline; }
 #cert-p12[hidden] { display: none; }
+
+/* iOS with touch control on: only the Home key applies */
+.platform-ios.touch-on .nav-keys { visibility: visible; }
+.platform-ios .nav-keys [data-key="4"], .platform-ios .nav-keys [data-key="187"] { display: none; }
+.platform-ios.touch-on #touch-enable { color: var(--accent); }
+
+/* Instant feedback where the user clicked (the device reacts a moment later) */
+.tap-ripple {
+  position: absolute; z-index: 2; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.9); background: rgba(107, 179, 163, 0.35); pointer-events: none;
+  animation: ripple 0.45s ease-out forwards;
+}
+.tap-ripple.long { border-color: var(--accent); animation-duration: 0.7s; }
+@keyframes ripple { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tap-ripple { animation-duration: 0.01s; } }

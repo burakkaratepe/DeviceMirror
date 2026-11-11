@@ -3,6 +3,7 @@ import path from 'node:path';
 import { findAdb } from './android/adb';
 import { DeviceManager } from './deviceManager';
 import { findIosHelper, iosSnapshot, shutdownIosHelpers } from './ios/iosCapture';
+import { IosRunnerManager } from './ios/runner';
 import { registerTouchSetup, SigningStore } from './ios/touchSetup';
 import { MirrorManager } from './mirrorManager';
 import { loadAndroidModels } from './modelNames';
@@ -33,6 +34,7 @@ let win: BrowserWindow | undefined;
 let splash: BrowserWindow | undefined;
 let manager: DeviceManager | undefined;
 let mirrors: MirrorManager | undefined;
+let iosRunner: IosRunnerManager | undefined;
 
 /** Device snapshot plus which devices currently have a mirror window. */
 function snapshot(): DeviceSnapshot {
@@ -146,13 +148,22 @@ app.whenReady().then(() => {
     iosHelper,
     settings,
     findDevice: (id) => manager!.find(id),
+    runnerRunning: (udid) => iosRunner?.isRunning(udid) ?? false,
     onChange: pushSnapshot,
   });
-  registerTouchSetup(
-    new SigningStore(path.join(app.getPath('userData'), 'signing')),
-    (wc) => mirrors!.deviceFor(wc),
-    (wc) => mirrors!.windowFor(wc),
-  );
+  // The runner's Xcode project ships with the app; it is built on first use.
+  const runnerDir = app.isPackaged ? path.join(process.resourcesPath, 'ios-runner') : path.join(app.getAppPath(), 'native', 'ios-runner');
+  const runner = new IosRunnerManager(runnerDir, path.join(app.getPath('userData'), 'ios-runner'));
+  iosRunner = runner;
+  registerTouchSetup({
+    store: new SigningStore(path.join(app.getPath('userData'), 'signing')),
+    runner,
+    iconDir: path.join(runnerDir, 'Icon'),
+    deviceFor: (wc) => mirrors!.deviceFor(wc),
+    windowFor: (wc) => mirrors!.windowFor(wc),
+    onRunnerReady: (deviceId, udid) => mirrors!.attachTouch(deviceId, udid),
+  });
+
   manager.onSnapshot((s) => {
     mirrors!.syncDevices(s.devices);
     pushSnapshot();
@@ -183,4 +194,5 @@ app.on('before-quit', () => {
   mirrors?.closeAll();
   manager?.stop();
   shutdownIosHelpers();
+  iosRunner?.stopAll();
 });
