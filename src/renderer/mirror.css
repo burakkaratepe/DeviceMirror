@@ -78,7 +78,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* iOS: view-only for now — no Android navigation keys or keyboard */
 .platform-ios .nav-keys { visibility: hidden; }
-.platform-ios #kbd-layout { display: none; }
 .platform-ios #screen { cursor: default; }
 
 /* ---- iOS touch control setup -------------------------------------------- */

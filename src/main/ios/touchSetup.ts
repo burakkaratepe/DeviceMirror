@@ -9,7 +9,7 @@
 //  - .p12: certificate + key exported to a file, with its password.
 
 import { dialog, ipcMain, safeStorage, type BrowserWindow, type WebContents } from 'electron';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { keychainIdentities, type KeychainIdentity } from './keychain';
@@ -109,6 +109,7 @@ function suggestLocalProfile(udid: string, ids: KeychainIdentity[]): ProfileInsp
 
 export interface TouchSetupDeps {
   store: SigningStore;
+  logFile?: string;
   runner: IosRunnerManager;
   /** Folder with the runner's AppIcon*.png files. */
   iconDir: string;
@@ -118,7 +119,16 @@ export interface TouchSetupDeps {
   onRunnerReady(deviceId: string, udid: string): Promise<void>;
 }
 
+/** Touch setup diary (userData/ios-runner/setup.log), for diagnosing a slow or failed start. */
+let logFile: string | undefined;
+function log(line: string) {
+  if (!logFile) return;
+  try { appendFileSync(logFile, `${new Date().toISOString()} ${line}\n`); } catch { /* best effort */ }
+}
+
 export function registerTouchSetup(deps: TouchSetupDeps) {
+  logFile = deps.logFile;
+  deps.runner.onLog = log;
   const { store, deviceFor, windowFor } = deps;
   ipcMain.handle('touch:saved', async (e): Promise<StoredIdentitySummary | undefined> => {
     const d = deviceFor(e.sender);
@@ -180,7 +190,7 @@ export function registerTouchSetup(deps: TouchSetupDeps) {
 
   ipcMain.handle('touch:setup', async (e) => {
     const d = deviceFor(e.sender);
-    const send = (st: SetupStep) => { if (!e.sender.isDestroyed()) e.sender.send('touch:step', st); };
+    const send = (st: SetupStep) => { log(`${st.id} ${st.state}${st.detail ? ` — ${st.detail}` : ''}`); if (!e.sender.isDestroyed()) e.sender.send('touch:step', st); };
     const fail = (id: SetupStep['id'], detail: string) => { send({ id, state: 'error', detail }); };
     if (d?.state !== 'ready') return fail('trust', 'Unlock the device and tap "Trust This Computer".');
     send({ id: 'trust', state: 'done' });
@@ -211,7 +221,11 @@ export function registerTouchSetup(deps: TouchSetupDeps) {
     const stamp = runner.stamp(xcode, identity.profile, identity.source);
     let xctestrun = runner.signedFor(stamp);
     const installed = xctestrun ? await runner.installedVersion(udid, xctestrun) : undefined;
-    if (xctestrun && installed === stamp) {
+    log(`stamp ${stamp}, signed ${xctestrun ? 'yes' : 'no'}, installed ${installed ?? 'none'}`);
+    // Installed with this exact build → no install. If the device could not
+    // be asked (undefined), try launching anyway: xcodebuild brings an
+    // out-of-date copy up to date itself.
+    if (xctestrun && (installed === stamp || installed === undefined)) {
       send({ id: 'sign', state: 'done', detail: 'Already prepared.' });
       send({ id: 'install', state: 'done', detail: 'Already on the device.' });
     } else {

@@ -26,6 +26,8 @@ interface Entry {
   session?: AndroidMirrorSession | IosMirrorSession;
   /** iOS: connection to the touch runner once touch control is on. */
   touch?: IosTouchClient;
+  /** iOS: the user switched touch off; do not reconnect on our own. */
+  touchOff?: boolean;
   /** Last frame size, to keep the window's aspect ratio in step with rotation. */
   size?: { width: number; height: number };
   status: MirrorStatus;
@@ -111,6 +113,7 @@ export class MirrorManager {
       if (!entry) return;
       const client = entry.touch;
       entry.touch = undefined;
+      entry.touchOff = true;
       client?.close();
       this.send(entry, 'mirror:touch', false);
     });
@@ -130,17 +133,24 @@ export class MirrorManager {
   isMirroring(id: string): boolean { return this.entries.has(id); }
 
   /** Connects the touch runner to the device's mirror window (iOS). */
-  async attachTouch(deviceId: string, udid: string) {
+  async attachTouch(deviceId: string, udid: string, timeoutMs?: number) {
     const e = this.entries.get(deviceId);
     if (!e) return;
+    e.touchOff = false;
     e.touch?.close();
-    const client = await IosTouchClient.connect(udid);
-    if (this.entries.get(deviceId) !== e) { client.close(); return; }
+    const client = await IosTouchClient.connect(udid, timeoutMs);
+    if (this.entries.get(deviceId) !== e || e.touchOff) { client.close(); return; }
     e.touch = client;
     client.onClose = () => {
       if (e.touch !== client) return;
       e.touch = undefined;
-      this.send(e, 'mirror:touch', false);
+      // The connection can drop while the runner keeps going (e.g. the
+      // device briefly re-enumerates on USB): reconnect quietly first.
+      if (!e.touchOff && this.deps.runnerRunning?.(udid)) {
+        void this.attachTouch(deviceId, udid, 20000).catch(() => { if (!e.touch) this.send(e, 'mirror:touch', false); });
+      } else {
+        this.send(e, 'mirror:touch', false);
+      }
     };
     this.send(e, 'mirror:touch', true);
   }

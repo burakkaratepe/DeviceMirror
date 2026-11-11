@@ -170,6 +170,7 @@ app.whenReady().then(() => {
   iosRunner = runner;
   registerTouchSetup({
     store: new SigningStore(path.join(app.getPath('userData'), 'signing')),
+    logFile: path.join(app.getPath('userData'), 'ios-runner', 'setup.log'),
     runner,
     iconDir: path.join(runnerDir, 'Icon'),
     deviceFor: (wc) => mirrors!.deviceFor(wc),

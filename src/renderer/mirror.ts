@@ -200,7 +200,6 @@ window.addEventListener('keyup', (e) => {
 });
 window.addEventListener('blur', () => keyboard.releaseAll());
 
-document.getElementById('kbd-layout')!.addEventListener('click', () => api.keyboardSettings());
 
 // ---- touch input -------------------------------------------------------
 

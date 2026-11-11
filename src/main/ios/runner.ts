@@ -31,6 +31,8 @@ export class RunnerError extends Error {}
 
 export class IosRunnerManager {
   private sessions = new Map<string, ChildProcess>();
+  /** Diagnostic lines (runner start / exit). */
+  onLog?: (line: string) => void;
 
   constructor(private projectDir: string, private cacheDir: string) {}
 
@@ -88,20 +90,26 @@ export class IosRunnerManager {
     }
   }
 
-  /** CFBundleVersion of the runner installed on the device, if any. */
-  async installedVersion(udid: string, xctestrun: string): Promise<string | undefined> {
+  /**
+   * CFBundleVersion of the runner installed on the device; null when it is
+   * not installed, undefined when the device could not be asked.
+   */
+  async installedVersion(udid: string, xctestrun: string): Promise<string | null | undefined> {
     const app = path.join(path.dirname(xctestrun), 'Release-iphoneos', 'DeviceMirrorRunner-Runner.app');
     const bundleId = (await run('/usr/bin/plutil', ['-extract', 'CFBundleIdentifier', 'raw', path.join(app, 'Info.plist')])).trim();
-    const out = path.join(os.tmpdir(), `dm-apps-${randomBytes(4).toString('hex')}.json`);
-    try {
-      await run('/usr/bin/xcrun', ['devicectl', 'device', 'info', 'apps', '--device', udid, '--bundle-id', bundleId, '--json-output', out], { timeout: 30000 });
-      const apps = JSON.parse(readFileSync(out, 'utf8'))?.result?.apps ?? [];
-      return apps[0]?.bundleVersion;
-    } catch {
-      return undefined;
-    } finally {
-      rmSync(out, { force: true });
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const out = path.join(os.tmpdir(), `dm-apps-${randomBytes(4).toString('hex')}.json`);
+      try {
+        await run('/usr/bin/xcrun', ['devicectl', 'device', 'info', 'apps', '--device', udid, '--bundle-id', bundleId, '--json-output', out], { timeout: 30000 });
+        const apps = JSON.parse(readFileSync(out, 'utf8'))?.result?.apps ?? [];
+        return apps[0]?.bundleVersion ?? null;
+      } catch {
+        await new Promise((r) => setTimeout(r, 1000)); // e.g. the device re-enumerated on USB
+      } finally {
+        rmSync(out, { force: true });
+      }
     }
+    return undefined;
   }
 
   /** Unsigned runner products for this Xcode + source (built once). */
@@ -223,7 +231,9 @@ export class IosRunnerManager {
     return new Promise((resolve, reject) => {
       // detached: own session without a controlling terminal, so nothing in
       // xcodebuild can ever prompt for a password on the user's terminal.
-      const child = spawn('/usr/bin/xcrun', ['xcodebuild', 'test-without-building', '-xctestrun', xctestrun, '-destination', `id=${udid}`], {
+      // One derived-data folder for all launches (xcodebuild otherwise makes a new one each time).
+      const derived = path.join(this.cacheDir, 'run');
+      const child = spawn('/usr/bin/xcrun', ['xcodebuild', 'test-without-building', '-xctestrun', xctestrun, '-destination', `id=${udid}`, '-derivedDataPath', derived], {
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
       });
@@ -237,7 +247,8 @@ export class IosRunnerManager {
       };
       child.stdout!.on('data', onData);
       child.stderr!.on('data', onData);
-      child.on('close', () => {
+      child.on('close', (code, signal) => {
+        this.onLog?.(`runner exited (code ${code ?? '-'}, signal ${signal ?? '-'})${ready ? '' : `: ${lastLines(log)}`}`);
         clearTimeout(timer);
         if (this.sessions.get(udid) === child) this.sessions.delete(udid);
         if (!ready) reject(new RunnerError(explainLaunchFailure(log)));

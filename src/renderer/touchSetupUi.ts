@@ -204,6 +204,7 @@ export function initTouchSetup(api: MirrorWindowApi, getSerial: () => string) {
     onLive() {
       if (invited) return;
       invited = true;
+      if (state !== 'off') return; // touch already on (runner kept running)
       showInvite();
     },
   };

@@ -17,7 +17,7 @@ const TRUST_POLL_MS = 2000;
 const IOS_DETACH_GRACE_MS = 2000;
 
 interface AndroidDetails { name: string; model?: string; osVersion?: string }
-interface IosEntry { usb: UsbmuxDevice; device: Device; trustTimer?: NodeJS.Timeout; previewTaken?: boolean; goneTimer?: NodeJS.Timeout }
+interface IosEntry { usb: UsbmuxDevice; device: Device; trustTimer?: NodeJS.Timeout; previewTaken?: boolean; previewTries?: number; previewTimer?: NodeJS.Timeout; goneTimer?: NodeJS.Timeout }
 
 export interface IosSupport {
   /** iOS mirroring is possible on this computer (macOS with the capture helper). */
@@ -70,7 +70,7 @@ export class DeviceManager {
   stop() {
     this.adb.stop();
     this.usbmux.stop();
-    for (const e of this.ios.values()) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); }
+    for (const e of this.ios.values()) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); clearTimeout(e.previewTimer); }
   }
 
   onSnapshot(cb: (s: DeviceSnapshot) => void): () => void {
@@ -190,10 +190,11 @@ export class DeviceManager {
     // usbmuxd can report the same UDID twice (USB + network), or again right
     // after a brief re-enumeration; keep one entry and what we already know.
     let previous: IosEntry | undefined;
-    for (const [k, e] of this.ios) if (e.device.id === id) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); previous = e; this.ios.delete(k); }
+    for (const [k, e] of this.ios) if (e.device.id === id) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); clearTimeout(e.previewTimer); previous = e; this.ios.delete(k); }
     if (previous?.goneTimer) {
       // Back within the grace period: keep the card (name, preview) as it was.
-      this.ios.set(usb.deviceId, { usb, device: previous.device, previewTaken: previous.previewTaken });
+      clearTimeout(previous.previewTimer);
+      this.ios.set(usb.deviceId, { usb, device: previous.device, previewTaken: !!previous.device.preview, previewTries: previous.previewTries });
       void this.refreshIos(usb.deviceId, false);
       return;
     }
@@ -209,7 +210,7 @@ export class DeviceManager {
     const e = this.ios.get(deviceId);
     if (!e || e.goneTimer) return;
     clearTimeout(e.trustTimer);
-    const remove = () => { if (this.ios.get(deviceId) === e) { this.ios.delete(deviceId); this.emit(); } };
+    const remove = () => { if (this.ios.get(deviceId) === e) { clearTimeout(e.previewTimer); this.ios.delete(deviceId); this.emit(); } };
     if (immediate) remove();
     else e.goneTimer = setTimeout(remove, IOS_DETACH_GRACE_MS);
   }
@@ -251,8 +252,18 @@ export class DeviceManager {
       if (!cur) return;
       cur.device = { ...cur.device, preview: this.makePreview(png) };
       this.emit();
-    } catch {
-      // no permission yet, locked device, …: keep the illustration
+    } catch (err) {
+      // Locked, busy mirroring, capture not up yet (it can take a while after
+      // plugging in), no camera permission…: keep the illustration and try
+      // again a few times.
+      const cur = this.ios.get(deviceId);
+      if (!cur || cur !== entry) return;
+      const tries = (cur.previewTries ?? 0) + 1;
+      cur.previewTries = tries;
+      if (tries < 5) {
+        cur.previewTaken = false;
+        cur.previewTimer = setTimeout(() => void this.captureIosPreview(deviceId), String(err).includes('busy') ? 30000 : 8000 * tries);
+      }
     }
   }
 }
