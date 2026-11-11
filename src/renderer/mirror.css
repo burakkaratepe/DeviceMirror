@@ -61,3 +61,7 @@ body {
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 @media (max-width: 330px) { .live-text-hide, #live-text { display: none; } }
+
+/* iOS: view-only for now — no Android navigation keys or keyboard */
+.platform-ios .nav-keys, .platform-ios #kbd-layout { visibility: hidden; }
+.platform-ios #screen { cursor: default; }

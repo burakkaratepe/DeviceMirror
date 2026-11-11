@@ -48,7 +48,7 @@ export type MirrorStatus =
   | { state: 'live' }
   | { state: 'error'; message: string };
 
-export interface MirrorInfo { deviceId: string; name: string; quality: Quality }
+export interface MirrorInfo { deviceId: string; name: string; platform: Platform; quality: Quality }
 
 export interface MirrorWindowApi {
   info(): Promise<MirrorInfo>;

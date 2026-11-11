@@ -32,7 +32,11 @@
       { "from": "resources/bin/${os}-${arch}", "to": "bin", "filter": ["**/*"] },
       { "from": "resources/scrcpy-server", "to": "scrcpy-server" }
     ],
-    "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" },
+    "mac": {
+      "target": ["dmg"],
+      "category": "public.app-category.developer-tools",
+      "extendInfo": { "NSCameraUsageDescription": "Device Mirror reads the screen of connected iPhones and iPads. macOS treats that screen as a camera." }
+    },
     "win": { "target": ["nsis"] },
     "linux": { "target": ["AppImage", "deb"], "category": "Development" }
   }

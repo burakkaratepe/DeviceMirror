@@ -6,12 +6,18 @@ import { hasPairRecord, lockdownGetValues, UsbmuxListener, type UsbmuxDevice } f
 import type { Settings } from './settings';
 import type { Device, DeviceSnapshot, DeviceState, Preview, ServiceStatus } from '../shared/types';
 
-const MIRROR_COMING = 'iOS mirroring is coming in the next update.';
 const IOS_PLATFORM_COMING = 'iOS mirroring on this platform is coming soon.';
 const TRUST_POLL_MS = 2000;
 
 interface AndroidDetails { name: string; model?: string; osVersion?: string }
-interface IosEntry { usb: UsbmuxDevice; device: Device; trustTimer?: NodeJS.Timeout }
+interface IosEntry { usb: UsbmuxDevice; device: Device; trustTimer?: NodeJS.Timeout; previewTaken?: boolean }
+
+export interface IosSupport {
+  /** iOS mirroring is possible on this computer (macOS with the capture helper). */
+  mirror: boolean;
+  /** One PNG of the device screen; used for the card preview. */
+  snapshot?: (udid: string, name: string) => Promise<Buffer>;
+}
 
 export class DeviceManager {
   private android = new Map<string, Device>();
@@ -35,6 +41,7 @@ export class DeviceManager {
     private settings: Settings,
     resolveAdb: () => string | undefined,
     private makePreview?: (png: Buffer) => Preview | undefined,
+    private iosSupport: IosSupport = { mirror: false },
   ) {
     this.adb = new AdbTracker(
       {
@@ -176,7 +183,7 @@ export class DeviceManager {
     for (const [k, e] of this.ios) if (e.device.id === id) { clearTimeout(e.trustTimer); this.ios.delete(k); }
     this.ios.set(usb.deviceId, {
       usb,
-      device: { id, platform: 'ios', serial: usb.udid, name: 'iOS device', state: 'connecting', quality: 'medium', mirrorUnavailableReason: MIRROR_COMING },
+      device: { id, platform: 'ios', serial: usb.udid, name: 'iOS device', state: 'connecting', quality: 'medium', mirrorUnavailableReason: reasonFor('connecting') },
     });
     this.emit();
     void this.refreshIos(usb.deviceId, true);
@@ -208,10 +215,27 @@ export class DeviceManager {
       model: typeof info.ProductType === 'string' ? info.ProductType : cur.device.model,
       osVersion: typeof info.ProductVersion === 'string' ? `iOS ${info.ProductVersion}` : cur.device.osVersion,
       state,
-      mirrorUnavailableReason: reasonFor(state) ?? (process.platform === 'darwin' ? MIRROR_COMING : IOS_PLATFORM_COMING),
+      mirrorUnavailableReason: reasonFor(state) ?? (this.iosSupport.mirror ? undefined : IOS_PLATFORM_COMING),
     };
     this.emit();
     if (!paired) cur.trustTimer = setTimeout(() => void this.refreshIos(deviceId, false), TRUST_POLL_MS);
+    else void this.captureIosPreview(deviceId);
+  }
+
+  /** One screenshot per connection (only once camera access was granted). */
+  private async captureIosPreview(deviceId: number) {
+    const entry = this.ios.get(deviceId);
+    if (!entry || entry.previewTaken || !this.iosSupport.snapshot || !this.makePreview) return;
+    entry.previewTaken = true;
+    try {
+      const png = await this.iosSupport.snapshot(entry.usb.udid, entry.device.name);
+      const cur = this.ios.get(deviceId);
+      if (!cur) return;
+      cur.device = { ...cur.device, preview: this.makePreview(png) };
+      this.emit();
+    } catch {
+      // no permission yet, locked device, …: keep the illustration
+    }
   }
 }
 

@@ -3,19 +3,24 @@
 import { BrowserWindow, clipboard, ipcMain, screen, type IpcMainEvent } from 'electron';
 import path from 'node:path';
 import { shell } from './android/adb';
-import { AndroidMirrorSession, QUALITY_PARAMS } from './android/scrcpy';
+import { AndroidMirrorSession, QUALITY_PARAMS, type SessionEvents } from './android/scrcpy';
+import { IosMirrorSession } from './ios/iosCapture';
 import { parseKeyboardLayout } from './keyboardLayout';
 import type { Settings } from './settings';
 import type { Device, MirrorInfo, MirrorResult, MirrorStatus, Quality } from '../shared/types';
 
 export const MAX_MIRRORS = 2;
+
+/** Input goes only to Android sessions for now (iOS touch arrives in Phase 5). */
+const controlOf = (e: { session?: AndroidMirrorSession | IosMirrorSession } | undefined) =>
+  e?.session instanceof AndroidMirrorSession ? e.session : undefined;
 const TOOLBAR_HEIGHT = 56; // keep in sync with mirror.css
 const QUALITIES: Quality[] = ['low', 'medium', 'high'];
 
 interface Entry {
   device: Device;
   win: BrowserWindow;
-  session?: AndroidMirrorSession;
+  session?: AndroidMirrorSession | IosMirrorSession;
   /** Last frame size, to keep the window's aspect ratio in step with rotation. */
   size?: { width: number; height: number };
   status: MirrorStatus;
@@ -23,6 +28,8 @@ interface Entry {
 
 export interface MirrorDeps {
   serverJar: () => string;
+  /** Path of the macOS ios-capture helper, if available. */
+  iosHelper: () => string | undefined;
   settings: Settings;
   findDevice(id: string): Device | undefined;
   /** Called when the set of mirrored devices or a quality changes. */
@@ -39,20 +46,20 @@ export class MirrorManager {
       return entry ? this.info(entry) : undefined;
     });
     ipcMain.on('mirror:touch', (e, action: unknown, x: unknown, y: unknown) => {
-      if ((action === 0 || action === 1 || action === 2) && typeof x === 'number' && typeof y === 'number') entryFor(e)?.session?.touch(action, x, y);
+      if ((action === 0 || action === 1 || action === 2) && typeof x === 'number' && typeof y === 'number') controlOf(entryFor(e))?.touch(action, x, y);
     });
     ipcMain.on('mirror:scroll', (e, x: unknown, y: unknown, h: unknown, v: unknown) => {
-      if ([x, y, h, v].every((n) => typeof n === 'number')) entryFor(e)?.session?.scroll(x as number, y as number, h as number, v as number);
+      if ([x, y, h, v].every((n) => typeof n === 'number')) controlOf(entryFor(e))?.scroll(x as number, y as number, h as number, v as number);
     });
     ipcMain.on('mirror:key', (e, code: unknown, meta: unknown) => {
       if (Number.isInteger(code) && (code as number) > 0 && (code as number) < 400) {
-        entryFor(e)?.session?.key(code as number, Number.isInteger(meta) ? (meta as number) : 0);
+        controlOf(entryFor(e))?.key(code as number, Number.isInteger(meta) ? (meta as number) : 0);
       }
     });
     ipcMain.on('mirror:hid', (e, report: unknown) => {
-      if (report instanceof Uint8Array && report.length === 8) entryFor(e)?.session?.hidKeyboard(report);
+      if (report instanceof Uint8Array && report.length === 8) controlOf(entryFor(e))?.hidKeyboard(report);
     });
-    ipcMain.on('mirror:keyboardSettings', (e) => entryFor(e)?.session?.openKeyboardSettings());
+    ipcMain.on('mirror:keyboardSettings', (e) => controlOf(entryFor(e))?.openKeyboardSettings());
     ipcMain.handle('mirror:keyboardLayout', async (e) => {
       const entry = [...this.entries.values()].find((x) => x.win.webContents === e.sender);
       if (!entry) return undefined;
@@ -64,7 +71,7 @@ export class MirrorManager {
     });
     ipcMain.on('mirror:paste', async (e) => {
       const text = await clipboard.readText(); // async in recent Electron versions
-      if (text) entryFor(e)?.session?.setClipboard(text, true);
+      if (text) controlOf(entryFor(e))?.setClipboard(text, true);
     });
     ipcMain.on('mirror:quality', (e, q: unknown) => {
       const entry = entryFor(e);
@@ -85,7 +92,9 @@ export class MirrorManager {
       existing.win.focus();
       return { ok: true };
     }
-    if (device.platform !== 'android') return { ok: false, reason: 'error', message: 'iOS mirroring is not available yet.' };
+    if (device.platform === 'ios' && (process.platform !== 'darwin' || !this.deps.iosHelper())) {
+      return { ok: false, reason: 'error', message: 'iOS mirroring on this platform is coming soon.' };
+    }
     if (replaceId && this.entries.has(replaceId)) this.close(replaceId);
     if (this.entries.size >= MAX_MIRRORS) {
       return { ok: false, reason: 'limit', active: [...this.entries.values()].map((e) => ({ id: e.device.id, name: e.device.name })) };
@@ -139,7 +148,7 @@ export class MirrorManager {
   }
 
   private info(e: Entry): MirrorInfo {
-    return { deviceId: e.device.id, name: e.device.name, quality: this.deps.settings.quality(e.device.id) };
+    return { deviceId: e.device.id, name: e.device.name, platform: e.device.platform, quality: this.deps.settings.quality(e.device.id) };
   }
 
   private send(e: Entry, channel: string, payload: unknown) {
@@ -157,7 +166,8 @@ export class MirrorManager {
     this.setStatus(e, { state: 'connecting' });
     const quality = QUALITY_PARAMS[this.deps.settings.quality(e.device.id)];
     let firstFrame = true;
-    const session = new AndroidMirrorSession(e.device.serial, this.deps.serverJar(), quality, {
+    let session: AndroidMirrorSession | IosMirrorSession | undefined;
+    const events: SessionEvents = {
       onVideo: (v) => {
         if (e.session !== session) return;
         if (v.type === 'size') this.fitToFrame(e, v.width, v.height);
@@ -170,7 +180,10 @@ export class MirrorManager {
         e.session = undefined;
         if (this.entries.get(e.device.id) === e) this.setStatus(e, { state: 'error', message: err?.message ?? 'Mirroring stopped.' });
       },
-    });
+    };
+    session = e.device.platform === 'ios'
+      ? new IosMirrorSession(this.deps.iosHelper()!, e.device.serial, e.device.name, quality, events)
+      : new AndroidMirrorSession(e.device.serial, this.deps.serverJar(), quality, events);
     e.session = session;
     try {
       await session.start();
@@ -178,6 +191,7 @@ export class MirrorManager {
       // onClosed already reported the error to the window
     }
   }
+
 
   private createWindow(device: Device): BrowserWindow {
     const work = screen.getPrimaryDisplay().workAreaSize;

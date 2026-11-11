@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
 import path from 'node:path';
 import { findAdb } from './android/adb';
 import { DeviceManager } from './deviceManager';
+import { findIosHelper, iosSnapshot } from './ios/iosCapture';
 import { MirrorManager } from './mirrorManager';
 import { Settings } from './settings';
 import type { DeviceSnapshot, MirrorResult, Preview, Quality } from '../shared/types';
@@ -132,9 +133,14 @@ app.whenReady().then(() => {
   splash = createSplash();
 
   const settings = new Settings(path.join(app.getPath('userData'), 'settings.json'));
-  manager = new DeviceManager(settings, () => findAdb(app.isPackaged ? process.resourcesPath : undefined), makePreview);
+  const iosHelper = () => findIosHelper(app.isPackaged ? process.resourcesPath : undefined);
+  manager = new DeviceManager(settings, () => findAdb(app.isPackaged ? process.resourcesPath : undefined), makePreview, {
+    mirror: process.platform === 'darwin' && !!iosHelper(),
+    snapshot: process.platform === 'darwin' ? (udid, name) => iosSnapshot(iosHelper()!, udid, name) : undefined,
+  });
   mirrors = new MirrorManager({
     serverJar: () => resource('scrcpy-server'),
+    iosHelper,
     settings,
     findDevice: (id) => manager!.find(id),
     onChange: pushSnapshot,

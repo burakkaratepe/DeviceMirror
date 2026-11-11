@@ -102,8 +102,14 @@ for (const b of segButtons) {
   });
 }
 
-function applyInfo(i: { name: string; quality: Quality }) {
+let platform: 'android' | 'ios' = 'android';
+/** iOS windows are view-only until touch control is enabled (Phase 4/5). */
+const controllable = () => platform === 'android';
+
+function applyInfo(i: { name: string; platform: 'android' | 'ios'; quality: Quality }) {
   deviceName = i.name;
+  platform = i.platform;
+  document.body.classList.toggle('platform-ios', i.platform === 'ios');
   document.title = i.name;
   showQuality(i.quality);
 }
@@ -164,7 +170,7 @@ document.getElementById('layout-close')!.addEventListener('click', () => { layou
 window.addEventListener('focus', () => { if (!layoutBar.hidden) void checkLayout(); });
 
 window.addEventListener('keydown', (e) => {
-  if ((e.target as HTMLElement).closest?.('#overlay button')) return;
+  if (!controllable() || (e.target as HTMLElement).closest?.('#overlay button')) return;
   // ⌘V / Ctrl+V pastes the computer's clipboard instead of the device's.
   if ((e.metaKey || e.ctrlKey) && !e.altKey && e.code === 'KeyV') {
     e.preventDefault();
@@ -174,7 +180,7 @@ window.addEventListener('keydown', (e) => {
   if (keyboard.handle(e, true)) e.preventDefault();
 });
 window.addEventListener('keyup', (e) => {
-  if (keyboard.handle(e, false)) e.preventDefault();
+  if (controllable() && keyboard.handle(e, false)) e.preventDefault();
 });
 window.addEventListener('blur', () => keyboard.releaseAll());
 
@@ -200,6 +206,7 @@ function toFrame(e: { clientX: number; clientY: number }): { x: number; y: numbe
 let activePointer: number | undefined;
 
 canvas.addEventListener('pointerdown', (e) => {
+  if (!controllable()) return;
   if (e.button === 2) { api.key(4); return; } // right click = Back
   if (e.button !== 0 || activePointer !== undefined) return;
   const p = toFrame(e);
@@ -225,6 +232,7 @@ canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 canvas.addEventListener('wheel', (e) => {
   e.preventDefault();
+  if (!controllable()) return;
   const p = toFrame(e);
   if (!p?.inside) return;
   const unit = e.deltaMode === 1 ? 1 : 1 / 40; // lines vs pixels → scroll "clicks"
