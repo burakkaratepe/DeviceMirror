@@ -54,7 +54,10 @@ export type MirrorStatus =
 export interface MirrorInfo { deviceId: string; serial: string; name: string; platform: Platform; quality: Quality }
 
 /** What a saved / just-checked signing identity looks like to the user. */
-export interface StoredIdentitySummary { certificate: string; team: string; profile: string; expires: string }
+export interface StoredIdentitySummary { certificate: string; team: string; profile: string; expires: string; source: 'keychain' | 'p12' }
+
+/** A profile as the signing dialog sees it; keychainCertificate is set when no .p12 is needed. */
+export interface ProfileInspection { path: string; name: string; keychainCertificate?: string }
 
 export interface SigningResult { ok: boolean; problems: string[]; identity?: StoredIdentitySummary }
 
@@ -82,7 +85,11 @@ export interface MirrorWindowApi {
   // iOS touch control setup (Phase 4 UI; Phase 5 makes the steps real)
   savedIdentity(): Promise<StoredIdentitySummary | undefined>;
   pickFile(kind: 'p12' | 'profile'): Promise<string | undefined>;
-  checkSigning(p12Path: string, password: string, profilePath: string): Promise<SigningResult>;
+  /** A profile on this Mac that already works for the device with a keychain certificate. */
+  suggestProfile(): Promise<ProfileInspection | undefined>;
+  inspectProfile(path: string): Promise<ProfileInspection | { error: string }>;
+  /** Without p12Path the profile's certificate is taken from the macOS keychain. */
+  checkSigning(profilePath: string, p12Path?: string, password?: string): Promise<SigningResult>;
   runSetup(): Promise<void>;
   onSetupStep(cb: (s: SetupStep) => void): void;
   copyText(text: string): void;

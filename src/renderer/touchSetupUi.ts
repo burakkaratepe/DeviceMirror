@@ -44,30 +44,76 @@ export function initTouchSetup(api: MirrorWindowApi, getSerial: () => string) {
   toolbarButton.addEventListener('click', () => void start());
 
   // ---- signing dialog --------------------------------------------------
+  // Profile first. On macOS, when the profile's certificate is already in the
+  // keychain (Xcode installs it), no .p12 is asked for. A profile on this Mac
+  // that already fits the device is filled in automatically.
+
+  const certKeychain = $<HTMLDivElement>('cert-keychain');
+  const certP12 = $<HTMLDivElement>('cert-p12');
+  let keychainCert: string | undefined;
+  let forceP12 = false;
 
   const fileName = (p: string) => p.split(/[\\/]/).pop() ?? p;
-  const refresh = () => { continueBtn.disabled = !p12Path || !profilePath || !password.value; };
+  const useKeychain = () => !!keychainCert && !forceP12;
+  const refresh = () => {
+    certKeychain.hidden = !useKeychain();
+    certP12.hidden = useKeychain() || !profilePath;
+    $<HTMLSpanElement>('p12-why').hidden = !profilePath || !!keychainCert;
+    continueBtn.disabled = !profilePath || (!useKeychain() && (!p12Path || !password.value));
+  };
 
-  function openSigning() {
+  function setFileLabel(label: HTMLSpanElement, p: string | undefined, text?: string) {
+    label.textContent = p ? (text ?? fileName(p)) : 'No file chosen';
+    label.classList.toggle('chosen', !!p);
+    label.title = p ?? '';
+  }
+
+  async function setProfile(p: string, found = false) {
+    const info = await api.inspectProfile(p);
+    problems.hidden = true;
+    if ('error' in info) {
+      showProblems([info.error]);
+      return;
+    }
+    profilePath = p;
+    keychainCert = info.keychainCertificate;
+    forceP12 = false;
+    setFileLabel(profileName, p, info.name);
+    $<HTMLSpanElement>('keychain-name').textContent = keychainCert ?? '';
+    $<HTMLSpanElement>('profile-found').hidden = !found;
+    refresh();
+  }
+
+  async function openSigning() {
     $<HTMLElement>('udid').textContent = getSerial();
     problems.hidden = true;
     refresh();
     signing.showModal();
+    if (!profilePath) {
+      const suggestion = await api.suggestProfile();
+      if (suggestion && !profilePath) await setProfile(suggestion.path, true);
+    }
   }
 
-  async function pick(kind: 'p12' | 'profile') {
-    const p = await api.pickFile(kind);
-    if (!p) return;
-    const label = kind === 'p12' ? p12Name : profileName;
-    label.textContent = fileName(p);
-    label.classList.add('chosen');
-    label.title = p;
-    if (kind === 'p12') { p12Path = p; password.focus(); } else profilePath = p;
-    problems.hidden = true;
-    refresh();
+  function showProblems(list: string[]) {
+    problems.replaceChildren(...list.map((m) => Object.assign(document.createElement('li'), { textContent: m })));
+    problems.hidden = false;
   }
-  $<HTMLButtonElement>('p12-pick').addEventListener('click', () => void pick('p12'));
-  $<HTMLButtonElement>('profile-pick').addEventListener('click', () => void pick('profile'));
+
+  $<HTMLButtonElement>('profile-pick').addEventListener('click', async () => {
+    const p = await api.pickFile('profile');
+    if (p) await setProfile(p);
+  });
+  $<HTMLButtonElement>('p12-pick').addEventListener('click', async () => {
+    const p = await api.pickFile('p12');
+    if (!p) return;
+    p12Path = p;
+    setFileLabel(p12Name, p);
+    problems.hidden = true;
+    password.focus();
+    refresh();
+  });
+  $<HTMLButtonElement>('use-p12').addEventListener('click', () => { forceP12 = true; refresh(); });
   password.addEventListener('input', refresh);
   password.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !continueBtn.disabled) continueBtn.click(); });
   $<HTMLButtonElement>('udid-copy').addEventListener('click', (e) => {
@@ -79,17 +125,15 @@ export function initTouchSetup(api: MirrorWindowApi, getSerial: () => string) {
   $<HTMLButtonElement>('signing-cancel').addEventListener('click', () => signing.close());
 
   continueBtn.addEventListener('click', async () => {
-    if (!p12Path || !profilePath) return;
+    if (!profilePath) return;
     continueBtn.disabled = true;
     continueBtn.textContent = 'Checking…';
-    const res = await api.checkSigning(p12Path, password.value, profilePath);
+    const res = useKeychain()
+      ? await api.checkSigning(profilePath)
+      : await api.checkSigning(profilePath, p12Path, password.value);
     continueBtn.textContent = 'Continue';
     refresh();
-    if (!res.ok) {
-      problems.replaceChildren(...res.problems.map((m) => Object.assign(document.createElement('li'), { textContent: m })));
-      problems.hidden = false;
-      return;
-    }
+    if (!res.ok) { showProblems(res.problems); return; }
     password.value = '';
     signing.close();
     runSetup(res.identity);

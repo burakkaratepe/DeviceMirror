@@ -62,18 +62,27 @@
     </footer>
     <dialog id="signing" aria-labelledby="signing-title">
       <h2 id="signing-title">Enable touch control</h2>
-      <p class="lead">A small helper app runs on the iPhone to pass your clicks and keys on. It is signed with your Apple development certificate.</p>
-      <div class="field">
-        <span class="label">Certificate (.p12)</span>
-        <div class="file-row"><span id="p12-name" class="file-name">No file chosen</span><button id="p12-pick" type="button" class="secondary">Choose…</button></div>
-      </div>
-      <label class="field">
-        <span class="label">Certificate password</span>
-        <input id="p12-password" type="password" autocomplete="off" spellcheck="false" />
-      </label>
+      <p class="lead">A small helper app runs on the iPhone to pass your clicks and keys on. It is signed with your Apple development certificate and a profile that includes this device.</p>
       <div class="field">
         <span class="label">Provisioning profile (.mobileprovision)</span>
         <div class="file-row"><span id="profile-name" class="file-name">No file chosen</span><button id="profile-pick" type="button" class="secondary">Choose…</button></div>
+        <span id="profile-found" class="hint" hidden>Found on this Mac.</span>
+      </div>
+      <div id="cert-keychain" class="field" hidden>
+        <span class="label">Certificate</span>
+        <div class="keychain-row"><span class="check" aria-hidden="true"></span><span><span id="keychain-name"></span><small>From this Mac's keychain — no .p12 needed</small></span></div>
+        <button id="use-p12" type="button" class="link">Use a .p12 file instead</button>
+      </div>
+      <div id="cert-p12">
+        <div class="field">
+          <span class="label">Certificate (.p12)</span>
+          <div class="file-row"><span id="p12-name" class="file-name">No file chosen</span><button id="p12-pick" type="button" class="secondary">Choose…</button></div>
+          <span id="p12-why" class="hint" hidden>This profile's certificate is not in this Mac's keychain. Export it as .p12 from the Mac where it was created.</span>
+        </div>
+        <label class="field">
+          <span class="label">Certificate password</span>
+          <input id="p12-password" type="password" autocomplete="off" spellcheck="false" />
+        </label>
       </div>
       <div class="field">
         <span class="label">Device UDID</span>
