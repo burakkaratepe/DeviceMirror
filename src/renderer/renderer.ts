@@ -1,5 +1,6 @@
-import type { Device, DeviceMirrorApi, DeviceSnapshot, Quality, ServiceStatus } from '../shared/types';
+import type { Device, DeviceMirrorApi, DeviceSnapshot, ServiceStatus } from '../shared/types';
 import { mockupSvg } from './mockups';
+import { focusOpenMenu, installOutsideClose, qualityPicker, type PickerHooks, type PickerState } from './qualityPicker';
 import { strings } from './strings';
 
 declare global {
@@ -12,6 +13,20 @@ const grid = $<HTMLElement>('grid');
 const empty = $<HTMLDivElement>('empty');
 const count = $<HTMLSpanElement>('count');
 const notices = $<HTMLDivElement>('notices');
+
+let last: DeviceSnapshot = { devices: [], services: { android: { ok: true }, ios: { ok: true } } };
+const picker: PickerState = { activeIndex: 1 };
+const pickerHooks: PickerHooks = {
+  state: picker,
+  refresh: () => render(last),
+  select: (deviceId, q) => {
+    picker.openFor = undefined;
+    // Optimistic update so the menu closes on the new value immediately.
+    render({ ...last, devices: last.devices.map((d) => (d.id === deviceId ? { ...d, quality: q } : d)) });
+    (grid.querySelector(`.card[data-id="${CSS.escape(deviceId)}"] .q-trigger`) as HTMLElement | null)?.focus();
+    void api.setQuality(deviceId, q);
+  },
+};
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);
@@ -42,18 +57,7 @@ function card(d: Device, index: number): HTMLElement {
   body.append(hint);
 
   const actions = el('div', 'actions');
-  const qWrap = el('label', 'quality');
-  const select = el('select');
-  select.title = strings.qualityLabel;
-  select.setAttribute('aria-label', `${strings.qualityLabel} for ${d.name}`);
-  for (const q of ['low', 'medium', 'high'] as Quality[]) {
-    const o = el('option', undefined, strings.quality[q]);
-    o.value = q;
-    o.selected = q === d.quality;
-    select.append(o);
-  }
-  select.addEventListener('change', () => void api.setQuality(d.id, select.value as Quality));
-  qWrap.append(select);
+  const qWrap = qualityPicker(d.id, d.name, d.quality, pickerHooks);
 
   const mirror = el('button', 'btn-primary', strings.mirror);
   mirror.type = 'button';
@@ -77,9 +81,14 @@ function renderService(id: string, s: ServiceStatus) {
 }
 
 function render(s: DeviceSnapshot) {
-  const focusedId = (document.activeElement?.closest('.card') as HTMLElement | null)?.dataset.id;
+  last = s;
+  if (picker.openFor && !s.devices.some((d) => d.id === picker.openFor)) picker.openFor = undefined; // device unplugged
+  const focused = document.activeElement as HTMLElement | null;
+  const focusedId = (focused?.closest('.card') as HTMLElement | null)?.dataset.id;
+  const focusedClass = focused?.classList.contains('btn-primary') ? '.btn-primary' : '.q-trigger';
   grid.replaceChildren(...s.devices.map(card));
-  if (focusedId) (grid.querySelector(`.card[data-id="${CSS.escape(focusedId)}"] select`) as HTMLElement | null)?.focus();
+  if (picker.openFor) focusOpenMenu(picker);
+  else if (focusedId) (grid.querySelector(`.card[data-id="${CSS.escape(focusedId)}"] ${focusedClass}`) as HTMLElement | null)?.focus();
 
   empty.hidden = s.devices.length > 0;
   count.textContent = s.devices.length ? String(s.devices.length) : '';
@@ -95,5 +104,6 @@ function render(s: DeviceSnapshot) {
   }
 }
 
+installOutsideClose(picker, () => render(last));
 api.onSnapshot(render);
 void api.getSnapshot().then(render);

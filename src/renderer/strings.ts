@@ -6,6 +6,7 @@ export const strings = {
   mirror: 'Mirror',
   qualityLabel: 'Quality',
   quality: { low: 'Low', medium: 'Medium', high: 'High' } satisfies Record<Quality, string>,
+  qualityDetail: { low: '720p · 30 fps', medium: '1080p · 60 fps', high: 'Native · 60 fps' } satisfies Record<Quality, string>,
   state: {
     ready: 'Connected',
     connecting: 'Connecting…',
