@@ -160,3 +160,10 @@ button.link:hover { text-decoration: underline; }
 .tap-ripple.long { border-color: var(--accent); animation-duration: 0.7s; }
 @keyframes ripple { from { transform: scale(0.4); opacity: 1; } to { transform: scale(1.6); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tap-ripple { animation-duration: 0.01s; } }
+
+/* Live drag trail; a dot replays it while the device performs the drag */
+.drag-trail { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; overflow: visible; opacity: 0; transition: opacity 0.35s; }
+.drag-trail.visible { opacity: 1; }
+.drag-trail.done { opacity: 0; }
+.drag-trail path { fill: none; stroke: rgba(107, 179, 163, 0.85); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.45)); }
+.drag-trail circle { fill: #fff; stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5)); }

@@ -38,6 +38,60 @@ export function initIosTouch(
     r.addEventListener('animationend', () => r.remove());
   }
 
+  // ---- drag trail ------------------------------------------------------
+  // The device only gets a drag once it is released, so draw the finger's
+  // path live in the window, then replay a dot along it with the same timing
+  // the device uses — the user sees the drag immediately and knows it is
+  // being performed.
+  const SVG = 'http://www.w3.org/2000/svg';
+  let trail: { svg: SVGSVGElement; path: SVGPathElement; pts: { x: number; y: number; t: number }[] } | undefined;
+
+  function stagePoint(e: { clientX: number; clientY: number }) {
+    const box = stage.getBoundingClientRect();
+    return { x: e.clientX - box.left, y: e.clientY - box.top };
+  }
+
+  function startTrail(e: PointerEvent) {
+    const svg = document.createElementNS(SVG, 'svg');
+    svg.setAttribute('class', 'drag-trail');
+    const path = document.createElementNS(SVG, 'path');
+    svg.append(path);
+    stage.append(svg);
+    trail = { svg, path, pts: [{ ...stagePoint(e), t: 0 }] };
+  }
+
+  function extendTrail(e: PointerEvent, t: number) {
+    if (!trail) return;
+    trail.pts.push({ ...stagePoint(e), t });
+    trail.path.setAttribute('d', trail.pts.map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' '));
+    trail.svg.classList.add('visible');
+  }
+
+  /** Moves a dot along the trail with the gesture's own timing, then fades the trail out. */
+  function replayTrail() {
+    const t = trail;
+    trail = undefined;
+    if (!t) return;
+    if (!t.svg.classList.contains('visible')) { t.svg.remove(); return; }
+    const dot = document.createElementNS(SVG, 'circle');
+    dot.setAttribute('r', '9');
+    t.svg.append(dot);
+    const total = t.pts[t.pts.length - 1].t;
+    const start = performance.now();
+    const frame = () => {
+      const el = (performance.now() - start) / 1000;
+      let i = t.pts.findIndex((p) => p.t >= el);
+      if (i < 0) i = t.pts.length - 1;
+      const a = t.pts[Math.max(0, i - 1)], b = t.pts[i];
+      const k = b.t > a.t ? Math.min(1, (el - a.t) / (b.t - a.t)) : 1;
+      dot.setAttribute('cx', String(a.x + (b.x - a.x) * k));
+      dot.setAttribute('cy', String(a.y + (b.y - a.y) * k));
+      if (el < total) requestAnimationFrame(frame);
+      else { t.svg.classList.add('done'); setTimeout(() => t.svg.remove(), 400); }
+    };
+    requestAnimationFrame(frame);
+  }
+
   canvas.addEventListener('pointerdown', (e) => {
     if (!enabled || e.button !== 0 || pointerId !== undefined) return;
     const p = toFrame(e);
@@ -49,6 +103,7 @@ export function initIosTouch(
     lastMove = startTime;
     points = [{ ...norm(p), t: 0 }];
     ripple(e.clientX, e.clientY);
+    startTrail(e);
   });
 
   canvas.addEventListener('pointermove', (e) => {
@@ -57,7 +112,11 @@ export function initIosTouch(
     if (now - lastMove < 12) return; // ~80 samples per second is plenty
     lastMove = now;
     const p = toFrame(e);
-    if (p) points.push({ ...norm(p), t: (now - startTime) / 1000 });
+    if (!p) return;
+    const t = (now - startTime) / 1000;
+    points.push({ ...norm(p), t });
+    // Only draw once it is clearly a drag, so taps stay a clean ripple.
+    if (Math.hypot(points[points.length - 1].x - points[0].x, points[points.length - 1].y - points[0].y) > TAP_SLOP || trail?.svg.classList.contains('visible')) extendTrail(e, t);
   });
 
   const finish = (e: PointerEvent) => {
@@ -70,10 +129,14 @@ export function initIosTouch(
     const far = points.some((q) => Math.hypot(q.x - first.x, q.y - first.y) > TAP_SLOP);
     const held = now - startTime;
     if (!far) {
+      trail?.svg.remove();
+      trail = undefined;
       if (held >= LONG_PRESS_MS) ripple(e.clientX, e.clientY, true);
       api.iosTap(first.x, first.y, held >= LONG_PRESS_MS ? held / 1000 : 0.03);
     } else {
+      extendTrail(e, (now - startTime) / 1000);
       api.iosGesture(points);
+      replayTrail();
     }
     points = [];
   };
