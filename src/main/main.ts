@@ -2,8 +2,9 @@ import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
 import path from 'node:path';
 import { findAdb } from './android/adb';
 import { DeviceManager } from './deviceManager';
+import { MirrorManager } from './mirrorManager';
 import { Settings } from './settings';
-import type { Preview, Quality } from '../shared/types';
+import type { DeviceSnapshot, MirrorResult, Preview, Quality } from '../shared/types';
 
 const QUALITIES: Quality[] = ['low', 'medium', 'high'];
 const PREVIEW_LONG_EDGE = 480; // px; card shows ~214 px tall, 2x for HiDPI
@@ -22,9 +23,23 @@ function makePreview(png: Buffer): Preview | undefined {
   return { url: `data:image/jpeg;base64,${small.toJPEG(78).toString('base64')}`, width: size.width, height: size.height };
 }
 
+const resource = (name: string) =>
+  app.isPackaged ? path.join(process.resourcesPath, name) : path.join(app.getAppPath(), 'resources', name);
+
 let win: BrowserWindow | undefined;
 let splash: BrowserWindow | undefined;
 let manager: DeviceManager | undefined;
+let mirrors: MirrorManager | undefined;
+
+/** Device snapshot plus which devices currently have a mirror window. */
+function snapshot(): DeviceSnapshot {
+  const s = manager!.snapshot();
+  return { ...s, devices: s.devices.map((d) => ({ ...d, mirroring: mirrors?.isMirroring(d.id) ?? false })) };
+}
+
+function pushSnapshot() {
+  win?.webContents.send('devices:snapshot', snapshot());
+}
 
 /** Frameless, transparent window shown while the main window loads. */
 function createSplash(): BrowserWindow {
@@ -118,17 +133,28 @@ app.whenReady().then(() => {
 
   const settings = new Settings(path.join(app.getPath('userData'), 'settings.json'));
   manager = new DeviceManager(settings, () => findAdb(app.isPackaged ? process.resourcesPath : undefined), makePreview);
-  manager.onSnapshot((s) => win?.webContents.send('devices:snapshot', s));
+  mirrors = new MirrorManager({
+    serverJar: () => resource('scrcpy-server'),
+    settings,
+    findDevice: (id) => manager!.find(id),
+    onChange: pushSnapshot,
+  });
+  manager.onSnapshot((s) => {
+    mirrors!.syncDevices(s.devices);
+    pushSnapshot();
+  });
   manager.start();
 
-  ipcMain.handle('devices:get', () => manager!.snapshot());
+  ipcMain.handle('devices:get', () => snapshot());
   ipcMain.handle('devices:setQuality', (_e, id: unknown, q: unknown) => {
     if (typeof id !== 'string' || !QUALITIES.includes(q as Quality)) return;
-    settings.setQuality(id, q as Quality);
-    win?.webContents.send('devices:snapshot', manager!.snapshot());
+    mirrors!.setQuality(id, q as Quality);
   });
-  ipcMain.handle('devices:mirror', () => {
-    // Phase 2 (Android) and Phase 3 (iOS) implement mirroring.
+  ipcMain.handle('devices:mirror', (_e, id: unknown, replaceId: unknown): MirrorResult => {
+    const device = typeof id === 'string' ? manager!.find(id) : undefined;
+    if (!device) return { ok: false, reason: 'error', message: 'The device is no longer connected.' };
+    if (device.mirrorUnavailableReason && !mirrors!.isMirroring(device.id)) return { ok: false, reason: 'error', message: device.mirrorUnavailableReason };
+    return mirrors!.open(device, typeof replaceId === 'string' ? replaceId : undefined);
   });
 
   createWindow(true);
@@ -139,4 +165,7 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => manager?.stop());
+app.on('before-quit', () => {
+  mirrors?.closeAll();
+  manager?.stop();
+});

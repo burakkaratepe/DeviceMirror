@@ -6,7 +6,7 @@ import { hasPairRecord, lockdownGetValues, UsbmuxListener, type UsbmuxDevice } f
 import type { Settings } from './settings';
 import type { Device, DeviceSnapshot, DeviceState, Preview, ServiceStatus } from '../shared/types';
 
-const MIRROR_COMING = 'Mirroring is coming in the next update.';
+const MIRROR_COMING = 'iOS mirroring is coming in the next update.';
 const IOS_PLATFORM_COMING = 'iOS mirroring on this platform is coming soon.';
 const TRUST_POLL_MS = 2000;
 
@@ -110,7 +110,7 @@ export class DeviceManager {
         osVersion: details?.osVersion,
         state: state === 'ready' && !details ? 'connecting' : state,
         quality: 'medium',
-        mirrorUnavailableReason: reasonFor(state) ?? MIRROR_COMING,
+        mirrorUnavailableReason: reasonFor(state === 'ready' && !details ? 'connecting' : state),
       });
       if (state === 'ready' && !details) void this.loadAndroidDetails(e.serial);
     }
@@ -139,7 +139,8 @@ export class DeviceManager {
     const cur = this.android.get(id);
     const d = this.androidDetails.get(serial)!;
     if (cur) {
-      this.android.set(id, { ...cur, name: d.name, model: d.model ?? cur.model, osVersion: d.osVersion, state: cur.state === 'connecting' ? 'ready' : cur.state });
+      const state = cur.state === 'connecting' ? 'ready' : cur.state;
+      this.android.set(id, { ...cur, name: d.name, model: d.model ?? cur.model, osVersion: d.osVersion, state, mirrorUnavailableReason: reasonFor(state) });
       this.emit();
       void this.captureAndroidPreview(serial);
     }

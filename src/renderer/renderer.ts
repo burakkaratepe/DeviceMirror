@@ -59,10 +59,10 @@ function card(d: Device, index: number): HTMLElement {
   const actions = el('div', 'actions');
   const qWrap = qualityPicker(d.id, d.name, d.quality, pickerHooks);
 
-  const mirror = el('button', 'btn-primary', strings.mirror);
+  const mirror = el('button', d.mirroring ? 'btn-primary is-mirroring' : 'btn-primary', d.mirroring ? strings.mirroring : strings.mirror);
   mirror.type = 'button';
-  mirror.disabled = !!d.mirrorUnavailableReason;
-  mirror.addEventListener('click', () => void api.mirror(d.id));
+  mirror.disabled = !d.mirroring && !!d.mirrorUnavailableReason;
+  mirror.addEventListener('click', () => void startMirror(d.id));
   const mWrap = el('span', 'mirror-wrap');
   mWrap.title = d.mirrorUnavailableReason ?? '';
   mWrap.append(mirror);
@@ -72,6 +72,38 @@ function card(d: Device, index: number): HTMLElement {
   c.append(preview, body);
   return c;
 }
+
+// ---- mirroring -----------------------------------------------------------
+
+const limitDialog = $<HTMLDialogElement>('limit-dialog');
+const limitList = $<HTMLDivElement>('limit-list');
+const toast = $<HTMLDivElement>('toast');
+let toastTimer: number | undefined;
+
+function showToast(text: string) {
+  toast.textContent = text;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => toast.classList.remove('show'), 4000);
+}
+
+async function startMirror(deviceId: string, replaceId?: string) {
+  const res = await api.mirror(deviceId, replaceId);
+  if (res.ok) return;
+  if (res.reason === 'error') { showToast(res.message); return; }
+  // Limit reached: offer to stop one of the running mirrors.
+  limitList.replaceChildren(
+    ...res.active.map((a) => {
+      const b = el('button', 'limit-option');
+      b.type = 'button';
+      b.append(el('span', 'limit-name', a.name), el('span', 'limit-action', strings.stopAndMirror));
+      b.addEventListener('click', () => { limitDialog.close(); void startMirror(deviceId, a.id); });
+      return b;
+    }),
+  );
+  limitDialog.showModal();
+}
+$<HTMLButtonElement>('limit-cancel').addEventListener('click', () => limitDialog.close());
 
 function renderService(id: string, s: ServiceStatus) {
   const node = $<HTMLDivElement>(id);

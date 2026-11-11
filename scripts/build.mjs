@@ -16,9 +16,14 @@ await Promise.all([
   build({ ...nodeCommon, entryPoints: ['src/main/main.ts'], outfile: 'dist/main.js' }),
   build({ ...nodeCommon, entryPoints: ['src/preload/preload.ts'], outfile: 'dist/preload.js' }),
   build({ ...nodeCommon, entryPoints: ['src/main/probe.ts'], outfile: 'dist/probe.js' }),
+  build({ ...nodeCommon, entryPoints: ['src/main/probeMirror.ts'], outfile: 'dist/probeMirror.js' }),
   build({ ...nodeCommon, entryPoints: tests, outdir: 'dist/test' }),
+  build({ ...nodeCommon, entryPoints: ['src/preload/mirrorPreload.ts'], outfile: 'dist/mirrorPreload.js' }),
   build({ ...common, platform: 'browser', format: 'iife', entryPoints: ['src/renderer/renderer.ts'], outfile: 'dist/renderer/renderer.js' }),
+  build({ ...common, platform: 'browser', format: 'iife', entryPoints: ['src/renderer/mirror.ts'], outfile: 'dist/renderer/mirror.js' }),
 ]);
+cpSync('src/renderer/mirror.html', 'dist/renderer/mirror.html');
+cpSync('src/renderer/mirror.css', 'dist/renderer/mirror.css');
 
 cpSync('src/renderer/index.html', 'dist/renderer/index.html');
 cpSync('src/renderer/styles.css', 'dist/renderer/styles.css');

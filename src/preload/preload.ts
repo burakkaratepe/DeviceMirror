@@ -9,7 +9,7 @@ const api: DeviceMirrorApi = {
     return () => ipcRenderer.off('devices:snapshot', handler);
   },
   setQuality: (id: string, q: Quality) => ipcRenderer.invoke('devices:setQuality', id, q),
-  mirror: (id: string) => ipcRenderer.invoke('devices:mirror', id),
+  mirror: (id: string, replaceId?: string) => ipcRenderer.invoke('devices:mirror', id, replaceId),
 };
 
 contextBridge.exposeInMainWorld('deviceMirror', api);

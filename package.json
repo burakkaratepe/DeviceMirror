@@ -28,7 +28,10 @@
     "compression": "maximum",
     "electronLanguages": ["en"],
     "files": ["dist/**/*", "!dist/test/**", "!dist/probe.js", "!**/*.map", "package.json"],
-    "extraResources": [{ "from": "resources/bin/${os}-${arch}", "to": "bin", "filter": ["**/*"] }],
+    "extraResources": [
+      { "from": "resources/bin/${os}-${arch}", "to": "bin", "filter": ["**/*"] },
+      { "from": "resources/scrcpy-server", "to": "scrcpy-server" }
+    ],
     "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" },
     "win": { "target": ["nsis"] },
     "linux": { "target": ["AppImage", "deb"], "category": "Development" }

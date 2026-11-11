@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'" />
+    <title>Device Mirror</title>
+    <link rel="stylesheet" href="mirror.css" />
+  </head>
+  <body>
+    <div id="stage">
+      <canvas id="screen" aria-label="Device screen"></canvas>
+      <div id="overlay">
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="overlay-text">Connecting…</p>
+        <button id="retry" type="button" hidden>Try again</button>
+      </div>
+    </div>
+    <footer id="toolbar">
+      <div class="seg" role="radiogroup" aria-label="Quality">
+        <button type="button" role="radio" data-q="low" title="Low · 720p · 30 fps">L</button>
+        <button type="button" role="radio" data-q="medium" title="Medium · 1080p · 60 fps">M</button>
+        <button type="button" role="radio" data-q="high" title="High · native · 60 fps">H</button>
+      </div>
+      <nav class="nav-keys">
+        <button type="button" data-key="4" title="Back" aria-label="Back">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 8 12l7 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </button>
+        <button type="button" data-key="3" title="Home" aria-label="Home">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6.5" fill="none" stroke="currentColor" stroke-width="2" /></svg>
+        </button>
+        <button type="button" data-key="187" title="Recent apps" aria-label="Recent apps">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="2" /></svg>
+        </button>
+      </nav>
+      <span id="live" class="live" title="Status"><span class="live-dot"></span><span id="live-text">Connecting</span></span>
+    </footer>
+    <script src="mirror.js"></script>
+  </body>
+</html>

@@ -43,6 +43,13 @@
         <p class="empty-text">Connect an Android or iOS device with a USB cable. It shows up here automatically.</p>
       </div>
     </main>
+    <dialog id="limit-dialog" aria-labelledby="limit-title">
+      <h2 id="limit-title">You can mirror up to 2 devices at a time</h2>
+      <p>Stop one of the running mirrors to continue.</p>
+      <div id="limit-list"></div>
+      <div class="dialog-actions"><button id="limit-cancel" type="button" class="btn-secondary">Cancel</button></div>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
     <script src="renderer.js"></script>
   </body>
 </html>

@@ -144,6 +144,71 @@ export async function screenshotPng(serial: string, port?: number): Promise<Buff
   return png;
 }
 
+/** Opens a device service and returns the live socket (e.g. a long-running shell). */
+export async function openDeviceService(serial: string, service: string, port?: number): Promise<net.Socket> {
+  const sock = await connect(port);
+  const reader = new Reader(sock);
+  try {
+    sock.write(encodeRequest(`host:transport:${serial}`));
+    await reader.expectOkay();
+    sock.write(encodeRequest(service));
+    await reader.expectOkay();
+  } catch (e) {
+    sock.destroy();
+    throw e;
+  }
+  sock.removeAllListeners('data'); // hand the raw stream to the caller
+  return sock;
+}
+
+/** `adb forward tcp:0 localabstract:<name>`; resolves with the local port adb picked. */
+export async function forward(serial: string, remote: string, port?: number): Promise<number> {
+  const { sock, reader } = await request(`host-serial:${serial}:forward:tcp:0;${remote}`, port);
+  try {
+    await reader.expectOkay(); // second OKAY: forward installed
+    return Number(await reader.readFramed());
+  } finally {
+    sock.destroy();
+  }
+}
+
+export async function removeForward(serial: string, localPort: number, port?: number): Promise<void> {
+  const { sock, reader } = await request(`host-serial:${serial}:killforward:tcp:${localPort}`, port);
+  try { await reader.expectOkay(); } catch { /* already gone */ } finally { sock.destroy(); }
+}
+
+/** Pushes a file with the adb sync protocol (SEND/DATA/DONE). */
+export async function push(serial: string, data: Buffer, remotePath: string, mode = 0o644, port?: number): Promise<void> {
+  const sock = await connect(port);
+  const reader = new Reader(sock);
+  try {
+    sock.write(encodeRequest(`host:transport:${serial}`));
+    await reader.expectOkay();
+    sock.write(encodeRequest('sync:'));
+    await reader.expectOkay();
+    const syncHeader = (id: string, n: number) => {
+      const b = Buffer.alloc(8);
+      b.write(id, 0, 'ascii');
+      b.writeUInt32LE(n, 4);
+      return b;
+    };
+    const spec = Buffer.from(`${remotePath},${mode}`, 'utf8');
+    sock.write(Buffer.concat([syncHeader('SEND', spec.length), spec]));
+    for (let off = 0; off < data.length; off += 64 * 1024) {
+      const chunk = data.subarray(off, off + 64 * 1024);
+      sock.write(Buffer.concat([syncHeader('DATA', chunk.length), chunk]));
+    }
+    sock.write(syncHeader('DONE', Math.floor(Date.now() / 1000)));
+    const reply = await reader.read(8);
+    const id = reply.toString('ascii', 0, 4);
+    if (id === 'FAIL') throw new Error(`adb push: ${(await reader.read(reply.readUInt32LE(4))).toString()}`);
+    if (id !== 'OKAY') throw new Error(`adb push: unexpected reply ${id}`);
+    sock.write(syncHeader('QUIT', 0));
+  } finally {
+    sock.destroy();
+  }
+}
+
 export interface AdbDeviceEntry {
   serial: string;
   state: string; // device | unauthorized | offline | ...

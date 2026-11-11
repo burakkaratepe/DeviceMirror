@@ -28,6 +28,38 @@ export interface Device {
   screenOff?: boolean;
   /** Why the Mirror button is disabled; undefined when mirroring is possible. */
   mirrorUnavailableReason?: string;
+  /** A mirror window is open for this device. */
+  mirroring?: boolean;
+}
+
+export type MirrorResult =
+  | { ok: true }
+  | { ok: false; reason: 'limit'; active: { id: string; name: string }[] }
+  | { ok: false; reason: 'error'; message: string };
+
+/** Messages from the main process to a mirror window. */
+export type MirrorVideo =
+  | { type: 'codec'; codec: string }
+  | { type: 'size'; width: number; height: number }
+  | { type: 'packet'; data: Uint8Array; key: boolean; pts: number };
+
+export type MirrorStatus =
+  | { state: 'connecting' }
+  | { state: 'live' }
+  | { state: 'error'; message: string };
+
+export interface MirrorInfo { deviceId: string; name: string; quality: Quality }
+
+export interface MirrorWindowApi {
+  info(): Promise<MirrorInfo>;
+  onVideo(cb: (v: MirrorVideo) => void): void;
+  onStatus(cb: (s: MirrorStatus) => void): void;
+  onInfo(cb: (i: MirrorInfo) => void): void;
+  touch(action: 0 | 1 | 2, x: number, y: number): void;
+  scroll(x: number, y: number, h: number, v: number): void;
+  key(keycode: number): void;
+  setQuality(q: Quality): void;
+  retry(): void;
 }
 
 export interface Preview {
@@ -52,5 +84,6 @@ export interface DeviceMirrorApi {
   getSnapshot(): Promise<DeviceSnapshot>;
   onSnapshot(cb: (s: DeviceSnapshot) => void): () => void;
   setQuality(deviceId: string, quality: Quality): Promise<void>;
-  mirror(deviceId: string): Promise<void>;
+  /** Opens (or focuses) a mirror window; `replaceId` closes that mirror first. */
+  mirror(deviceId: string, replaceId?: string): Promise<MirrorResult>;
 }
