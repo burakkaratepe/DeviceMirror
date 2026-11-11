@@ -6,11 +6,13 @@
 //   sign    codesign with the keychain identity, or with a .p12 imported into
 //           a throwaway keychain that is deleted right after.
 //   install devicectl
-//   launch  xcodebuild test-without-building (keeps running while touch is on)
+//   launch  xcodebuild test-without-building; the session is kept running and
+//           reused (also after the app quits), since every start re-pushes
+//           the runner to the device
 
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, cpSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildPlist, type PlistValue } from '../plist';
@@ -225,38 +227,56 @@ export class IosRunnerManager {
     await run('/usr/bin/xcrun', ['devicectl', 'device', 'install', 'app', '--device', udid, app], { timeout: 3 * 60 * 1000 });
   }
 
-  /** Starts the XCTest session; resolves once the runner says it is listening. */
-  launch(udid: string, xctestrun: string): Promise<void> {
+  /**
+   * Starts the XCTest session; resolves once the runner says it is listening.
+   *
+   * The session outlives this app on purpose: xcodebuild pushes the runner to
+   * the device again every time it starts one (the "Installing…" on the
+   * device), so a running runner is reused across mirror windows and app
+   * restarts. Output goes to a file rather than a pipe, so xcodebuild keeps
+   * going after we quit.
+   */
+  async launch(udid: string, xctestrun: string): Promise<void> {
     this.stop(udid);
-    return new Promise((resolve, reject) => {
-      // detached: own session without a controlling terminal, so nothing in
-      // xcodebuild can ever prompt for a password on the user's terminal.
-      // One derived-data folder for all launches (xcodebuild otherwise makes a new one each time).
-      const derived = path.join(this.cacheDir, 'run');
-      const child = spawn('/usr/bin/xcrun', ['xcodebuild', 'test-without-building', '-xctestrun', xctestrun, '-destination', `id=${udid}`, '-derivedDataPath', derived], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        detached: true,
-      });
-      this.sessions.set(udid, child);
-      let log = '';
-      let ready = false;
-      const timer = setTimeout(() => { if (!ready) { this.stop(udid); reject(new RunnerError('The touch helper did not start in time.')); } }, 120000);
-      const onData = (d: Buffer) => {
-        log = (log + d.toString()).slice(-8000);
-        if (!ready && log.includes('[DMRunner] listening')) { ready = true; clearTimeout(timer); resolve(); }
-      };
-      child.stdout!.on('data', onData);
-      child.stderr!.on('data', onData);
-      child.on('close', (code, signal) => {
-        this.onLog?.(`runner exited (code ${code ?? '-'}, signal ${signal ?? '-'})${ready ? '' : `: ${lastLines(log)}`}`);
-        clearTimeout(timer);
-        if (this.sessions.get(udid) === child) this.sessions.delete(udid);
-        if (!ready) reject(new RunnerError(explainLaunchFailure(log)));
-      });
+    await this.killStale(xctestrun, udid);
+    const derived = path.join(this.cacheDir, 'run');
+    mkdirSync(derived, { recursive: true });
+    const logPath = path.join(derived, `runner-${udid}.log`);
+    writeFileSync(logPath, '');
+    const fd = openSync(logPath, 'a');
+    // detached: own session without a controlling terminal, so nothing in
+    // xcodebuild can ever prompt for a password on the user's terminal.
+    const child = spawn('/usr/bin/xcrun', ['xcodebuild', 'test-without-building', '-xctestrun', xctestrun, '-destination', `id=${udid}`, '-derivedDataPath', derived], {
+      stdio: ['ignore', fd, fd],
+      detached: true,
     });
+    closeSync(fd);
+    child.unref();
+    this.sessions.set(udid, child);
+    const readLog = () => { try { return readFileSync(logPath, 'utf8').slice(-8000); } catch { return ''; } };
+    let exited = false;
+    child.on('exit', (code, signal) => {
+      exited = true;
+      if (this.sessions.get(udid) === child) this.sessions.delete(udid);
+      this.onLog?.(`runner exited (code ${code ?? '-'}, signal ${signal ?? '-'})`);
+    });
+    const deadline = Date.now() + 120000;
+    for (;;) {
+      await new Promise((r) => setTimeout(r, 250));
+      const log = readLog();
+      if (log.includes('[DMRunner] listening')) return;
+      if (exited) throw new RunnerError(explainLaunchFailure(log));
+      if (Date.now() > deadline) { this.stop(udid); throw new RunnerError('The touch helper did not start in time.'); }
+    }
   }
 
+  /** True while a runner session started by this app instance is running. */
   isRunning(udid: string) { return this.sessions.has(udid); }
+
+  /** Ends xcodebuild sessions for this runner left over from an earlier app run. */
+  private async killStale(xctestrun: string, udid: string) {
+    await run('/usr/bin/pkill', ['-9', '-f', `test-without-building -xctestrun ${xctestrun} -destination id=${udid}`]).catch(() => undefined);
+  }
 
   stop(udid: string) {
     const child = this.sessions.get(udid);

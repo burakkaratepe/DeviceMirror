@@ -220,3 +220,7 @@ button.link:hover { text-decoration: underline; }
 .side-btn[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .side-btn { transition: none; } }
 #toolbar .nav-keys { margin: 0 auto; }
+
+/* Toast over the picture */
+#toast { position: absolute; z-index: 6; left: 50%; top: 28px; transform: translateX(-50%); max-width: calc(100% - 100px); padding: 9px 14px; border-radius: 10px; background: rgba(20, 27, 45, 0.94); border: 1px solid rgba(255, 255, 255, 0.1); color: #e5e7eb; font-size: 12.5px; line-height: 1.4; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); pointer-events: none; }
+#toast[hidden] { display: none; }

@@ -40,6 +40,11 @@ export class IosTouchClient {
     throw lastError instanceof Error ? lastError : new Error('Could not reach the touch helper on the device.');
   }
 
+  /** True when a runner answers on the device (connects and hangs up). */
+  static async probe(udid: string): Promise<boolean> {
+    try { (await IosTouchClient.connect(udid, 1500)).close(); return true; } catch { return false; }
+  }
+
   private attach(sock: net.Socket, leftover: Buffer): Promise<void> {
     this.sock = sock;
     sock.setNoDelay(true);

@@ -57,6 +57,11 @@ static BOOL readFully(int fd, void *buf, size_t n) {
   return YES;
 }
 
+static void onMain(dispatch_block_t block) {
+  if (NSThread.isMainThread) block();
+  else dispatch_sync(dispatch_get_main_queue(), block);
+}
+
 #pragma mark - Event synthesis
 
 // Private classes are looked up at run time: they have moved between XCTest
@@ -207,19 +212,21 @@ static BOOL synthesize(XCPointerEventPath *path) {
       return synthesize(path);
     }
     case 4:
-      [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonHome];
+      onMain(^{ [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonHome]; });
       return YES;
-    case 5: { // side buttons
+    case 5: { // side buttons (XCUIDevice expects the main thread)
       int button = (int)f[0];
       if (button == 100) { // lock / wake: private XCUIDevice method (no public API)
         SEL lock = NSSelectorFromString(@"pressLockButton");
         if (![XCUIDevice.sharedDevice respondsToSelector:lock]) return NO;
-        ((void (*)(id, SEL))[XCUIDevice.sharedDevice methodForSelector:lock])(XCUIDevice.sharedDevice, lock);
+        NSLog(@"[DMRunner] lock button");
+        onMain(^{ ((void (*)(id, SEL))[XCUIDevice.sharedDevice methodForSelector:lock])(XCUIDevice.sharedDevice, lock); });
+        NSLog(@"[DMRunner] lock button done");
         return YES;
       }
 #if !TARGET_OS_SIMULATOR
-      if (button == 2) { [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeUp]; return YES; }
-      if (button == 3) { [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeDown]; return YES; }
+      if (button == 2) { onMain(^{ [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeUp]; }); return YES; }
+      if (button == 3) { onMain(^{ [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeDown]; }); return YES; }
 #endif
       return NO;
     }

@@ -25,6 +25,7 @@ const api: MirrorWindowApi = {
   copyText: (text) => ipcRenderer.send('mirror:copy', text),
   windowAction: (action) => ipcRenderer.send('mirror:window', action),
   onTouch: (cb) => { ipcRenderer.on('mirror:touch', (_e, on: boolean) => cb(on)); },
+  onNotice: (cb) => { ipcRenderer.on('mirror:notice', (_e, text: string) => cb(text)); },
   iosTap: (x, y, hold) => ipcRenderer.send('ios:tap', x, y, hold),
   iosGesture: (points) => ipcRenderer.send('ios:gesture', points),
   iosText: (text) => ipcRenderer.send('ios:text', text),

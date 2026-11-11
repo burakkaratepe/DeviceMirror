@@ -69,7 +69,8 @@ export interface MirrorWindowApi {
   onVideo(cb: (v: MirrorVideo) => void): void;
   onStatus(cb: (s: MirrorStatus) => void): void;
   onInfo(cb: (i: MirrorInfo) => void): void;
-  touch(action: 0 | 1 | 2, x: number, y: number): void;
+  /** Android MotionEvent action: 0 down, 1 up, 2 move, 7 hover move, 9 hover enter, 10 hover exit. */
+  touch(action: 0 | 1 | 2 | 7 | 9 | 10, x: number, y: number): void;
   scroll(x: number, y: number, h: number, v: number): void;
   key(keycode: number, metaState?: number): void;
   /** 8-byte HID keyboard report for the device's virtual hardware keyboard. */
@@ -96,6 +97,8 @@ export interface MirrorWindowApi {
   windowAction(action: 'close' | 'minimize'): void;
   // iOS touch control (once the runner is connected)
   onTouch(cb: (on: boolean) => void): void;
+  /** Short messages from the main process (shown as a toast). */
+  onNotice(cb: (text: string) => void): void;
   iosTap(x: number, y: number, holdSeconds: number): void;
   iosGesture(points: { x: number; y: number; t: number }[]): void;
   iosText(text: string): void;

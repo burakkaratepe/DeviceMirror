@@ -11,6 +11,18 @@ declare global {
 }
 
 const api = window.mirror;
+
+// Short toast over the picture for things worth a word (touch stopped, …).
+const toast = document.getElementById('toast') as HTMLDivElement;
+let toastTimer: number | undefined;
+function showToast(text: string) {
+  toast.textContent = text;
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => { toast.hidden = true; }, 5000);
+}
+api.notice = showToast;
+api.onNotice(showToast);
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
@@ -226,15 +238,41 @@ canvas.addEventListener('pointerdown', (e) => {
   if (e.button !== 0 || activePointer !== undefined) return;
   const p = toFrame(e);
   if (!p?.inside) return;
+  endHover(e); // a press ends the hover
   activePointer = e.pointerId;
   canvas.setPointerCapture(e.pointerId);
   api.touch(0, p.x, p.y);
 });
+// Android: moving the mouse over the picture without pressing is sent as
+// hover, like scrcpy does (hover highlights, tooltips, …). At most once per
+// frame.
+let hovering = false;
+let hoverAt: { x: number; y: number } | undefined;
+let hoverFrame = 0;
+const hoverOn = () => platform === 'android' && controllable();
 canvas.addEventListener('pointermove', (e) => {
-  if (e.pointerId !== activePointer) return;
+  if (e.pointerId === activePointer) {
+    const p = toFrame(e);
+    if (p) api.touch(2, p.x, p.y);
+    return;
+  }
+  if (activePointer !== undefined || e.buttons || !hoverOn()) return;
   const p = toFrame(e);
-  if (p) api.touch(2, p.x, p.y);
+  if (!p?.inside) { endHover(e); return; }
+  if (!hovering) { hovering = true; api.touch(9, p.x, p.y); }
+  hoverAt = p;
+  hoverFrame ||= requestAnimationFrame(() => {
+    hoverFrame = 0;
+    if (hovering && hoverAt) api.touch(7, hoverAt.x, hoverAt.y);
+  });
 });
+function endHover(e: { clientX: number; clientY: number }) {
+  if (!hovering) return;
+  hovering = false;
+  const p = toFrame(e) ?? hoverAt;
+  if (p) api.touch(10, p.x, p.y);
+}
+canvas.addEventListener('pointerleave', (e) => { if (activePointer === undefined) endHover(e); });
 const release = (e: PointerEvent) => {
   if (e.pointerId !== activePointer) return;
   activePointer = undefined;

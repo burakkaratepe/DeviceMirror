@@ -236,17 +236,20 @@ export class AndroidMirrorSession {
   }
 
   /** action: 0 down, 1 up, 2 move. x/y in video frame pixels. */
-  touch(action: 0 | 1 | 2, x: number, y: number) {
+  /** action: 0 down, 1 up, 2 move (finger); 7 hover move, 9 hover enter, 10 hover exit (mouse). */
+  touch(action: 0 | 1 | 2 | 7 | 9 | 10, x: number, y: number) {
     if (!this.width || !this.height) return;
+    const hover = action >= 7;
     const b = Buffer.alloc(32);
     b[0] = 2; // INJECT_TOUCH_EVENT
     b[1] = action;
-    b.writeBigUInt64BE(0xfffffffffffffffen, 2); // POINTER_ID_GENERIC_FINGER
+    // Hover comes from the mouse (as in scrcpy), presses from a finger.
+    b.writeBigUInt64BE(hover ? 0xffffffffffffffffn : 0xfffffffffffffffen, 2); // POINTER_ID_MOUSE / POINTER_ID_GENERIC_FINGER
     b.writeInt32BE(Math.round(x), 10);
     b.writeInt32BE(Math.round(y), 14);
     b.writeUInt16BE(this.width, 18);
     b.writeUInt16BE(this.height, 20);
-    b.writeUInt16BE(action === 1 ? 0 : 0xffff, 22); // pressure
+    b.writeUInt16BE(action === 1 || hover ? 0 : 0xffff, 22); // pressure
     b.writeUInt32BE(0, 24); // action button
     b.writeUInt32BE(0, 28); // buttons
     this.send(b);

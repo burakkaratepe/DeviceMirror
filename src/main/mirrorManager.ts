@@ -41,8 +41,6 @@ export interface MirrorDeps {
   findDevice(id: string): Device | undefined;
   /** Called when the set of mirrored devices or a quality changes. */
   onChange(): void;
-  /** iOS: true when the touch runner is already running for this UDID. */
-  runnerRunning?(udid: string): boolean;
 }
 
 export class MirrorManager {
@@ -55,7 +53,7 @@ export class MirrorManager {
       return entry ? this.info(entry) : undefined;
     });
     ipcMain.on('mirror:touch', (e, action: unknown, x: unknown, y: unknown) => {
-      if ((action === 0 || action === 1 || action === 2) && typeof x === 'number' && typeof y === 'number') controlOf(entryFor(e))?.touch(action, x, y);
+      if ([0, 1, 2, 7, 9, 10].includes(action as number) && typeof x === 'number' && typeof y === 'number') controlOf(entryFor(e))?.touch(action as 0 | 1 | 2 | 7 | 9 | 10, x, y);
     });
     ipcMain.on('mirror:scroll', (e, x: unknown, y: unknown, h: unknown, v: unknown) => {
       if ([x, y, h, v].every((n) => typeof n === 'number')) controlOf(entryFor(e))?.scroll(x as number, y as number, h as number, v as number);
@@ -146,10 +144,15 @@ export class MirrorManager {
       e.touch = undefined;
       // The connection can drop while the runner keeps going (e.g. the
       // device briefly re-enumerates on USB): reconnect quietly first.
-      if (!e.touchOff && this.deps.runnerRunning?.(udid)) {
-        void this.attachTouch(deviceId, udid, 20000).catch(() => { if (!e.touch) this.send(e, 'mirror:touch', false); });
+      if (!e.touchOff) {
+        void this.attachTouch(deviceId, udid, 20000).catch(() => {
+          if (e.touch) return;
+          this.send(e, 'mirror:touch', false);
+          this.send(e, 'mirror:notice', 'Lost the connection to touch control. Turn it on again with the hand button.');
+        });
       } else {
         this.send(e, 'mirror:touch', false);
+        if (!e.touchOff) this.send(e, 'mirror:notice', 'Touch control stopped on the device. Unlock it if needed, then turn touch on again with the hand button.');
       }
     };
     this.send(e, 'mirror:touch', true);
@@ -184,8 +187,9 @@ export class MirrorManager {
     });
     entry.win.webContents.once('did-finish-load', () => {
       void this.startSession(entry);
-      // Touch runner still running from before: reconnect without the setup flow.
-      if (device.platform === 'ios' && this.deps.runnerRunning?.(device.serial)) void this.attachTouch(device.id, device.serial).catch(() => undefined);
+      // Touch runner still running from before (this or an earlier app run):
+      // connect without the setup flow.
+      if (device.platform === 'ios') void this.attachTouch(device.id, device.serial, 2500).catch(() => undefined);
     });
     this.deps.onChange();
     return { ok: true };

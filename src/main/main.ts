@@ -5,6 +5,7 @@ import { DeviceManager } from './deviceManager';
 import { findIosHelper, iosSnapshot, shutdownIosHelpers } from './ios/iosCapture';
 import { IosRunnerManager } from './ios/runner';
 import { registerTouchSetup, SigningStore } from './ios/touchSetup';
+import { IosTouchClient } from './ios/touchClient';
 import { MirrorManager } from './mirrorManager';
 import { loadAndroidModels } from './modelNames';
 import { Settings } from './settings';
@@ -34,7 +35,6 @@ let win: BrowserWindow | undefined;
 let splash: BrowserWindow | undefined;
 let manager: DeviceManager | undefined;
 let mirrors: MirrorManager | undefined;
-let iosRunner: IosRunnerManager | undefined;
 
 /** Device snapshot plus which devices currently have a mirror window. */
 function snapshot(): DeviceSnapshot {
@@ -161,13 +161,11 @@ app.whenReady().then(() => {
     iosHelper,
     settings,
     findDevice: (id) => manager!.find(id),
-    runnerRunning: (udid) => iosRunner?.isRunning(udid) ?? false,
     onChange: pushSnapshot,
   });
   // The runner's Xcode project ships with the app; it is built on first use.
   const runnerDir = app.isPackaged ? path.join(process.resourcesPath, 'ios-runner') : path.join(app.getAppPath(), 'native', 'ios-runner');
   const runner = new IosRunnerManager(runnerDir, path.join(app.getPath('userData'), 'ios-runner'));
-  iosRunner = runner;
   registerTouchSetup({
     store: new SigningStore(path.join(app.getPath('userData'), 'signing')),
     logFile: path.join(app.getPath('userData'), 'ios-runner', 'setup.log'),
@@ -176,6 +174,7 @@ app.whenReady().then(() => {
     deviceFor: (wc) => mirrors!.deviceFor(wc),
     windowFor: (wc) => mirrors!.windowFor(wc),
     onRunnerReady: (deviceId, udid) => mirrors!.attachTouch(deviceId, udid),
+    runnerAnswers: (udid) => IosTouchClient.probe(udid),
   });
 
   manager.onSnapshot((s) => {
@@ -204,12 +203,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Also when the process is ended without a normal quit (Ctrl-C in a terminal).
-process.on('exit', () => iosRunner?.stopAll());
-
 app.on('before-quit', () => {
   mirrors?.closeAll();
   manager?.stop();
   shutdownIosHelpers();
-  iosRunner?.stopAll();
+  // The iOS touch runner is left running on purpose (see IosRunnerManager.launch).
 });

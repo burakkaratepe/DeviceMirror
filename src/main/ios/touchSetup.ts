@@ -109,6 +109,8 @@ function suggestLocalProfile(udid: string, ids: KeychainIdentity[]): ProfileInsp
 
 export interface TouchSetupDeps {
   store: SigningStore;
+  /** True when a touch runner is listening on the device right now. */
+  runnerAnswers(udid: string): Promise<boolean>;
   logFile?: string;
   runner: IosRunnerManager;
   /** Folder with the runner's AppIcon*.png files. */
@@ -197,8 +199,9 @@ export function registerTouchSetup(deps: TouchSetupDeps) {
     const udid = d.serial;
     const { runner } = deps;
 
-    // Runner still running (touch was only switched off): just reconnect.
-    if (runner.isRunning(udid)) {
+    // A runner is still running (touch was only switched off, or it was
+    // started by an earlier run of the app): just connect to it.
+    if (runner.isRunning(udid) || await deps.runnerAnswers(udid)) {
       try {
         send({ id: 'launch', state: 'running' });
         await deps.onRunnerReady(d.id, udid);
