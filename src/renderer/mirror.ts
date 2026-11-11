@@ -96,6 +96,7 @@ function showStatus(s: MirrorStatus) {
   live.classList.toggle('on', s.state === 'live');
   live.classList.toggle('error', s.state === 'error');
   liveText.textContent = s.state === 'live' ? 'Live' : s.state === 'error' ? 'Stopped' : 'Connecting';
+  live.title = liveText.textContent;
   overlay.classList.toggle('hidden', s.state === 'live');
   overlay.classList.toggle('error', s.state === 'error');
   retryBtn.hidden = s.state !== 'error';

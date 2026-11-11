@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
 body {
-  display: flex; flex-direction: column; background: transparent; color: var(--text); user-select: none;
+  display: flex; flex-direction: row; background: transparent; color: var(--text); user-select: none;
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Ubuntu, sans-serif;
 }
 /* A soft backdrop so the phone reads as one object on it, not as a frame inside a frame */
@@ -34,29 +34,29 @@ body {
 #layout-open { height: 28px; padding: 0 12px; border: 0; border-radius: 7px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
 #layout-close { width: 28px; height: 28px; border: 0; border-radius: 7px; background: rgba(255, 255, 255, 0.08); color: var(--text); cursor: pointer; }
 
-/* 56 px: keep in sync with TOOLBAR_HEIGHT in mirrorManager.ts */
-/* A floating pill under the phone; drag it to move the window.
-   56 px including margins: keep in sync with TOOLBAR_HEIGHT in mirrorManager.ts */
+/* A floating rail to the right of the phone (it stays whole however small the
+   window gets); drag it to move the window.
+   58 px including margins: keep in sync with TOOLBAR_WIDTH in mirrorManager.ts */
 #toolbar {
-  height: 44px; margin: 6px auto; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 10px; max-width: calc(100% - 12px);
+  width: 46px; margin: auto 8px auto 4px; flex: none; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0; max-height: calc(100% - 12px); overflow: hidden;
   border-radius: 14px; background: rgba(20, 27, 45, 0.94); border: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45); backdrop-filter: blur(12px); -webkit-app-region: drag;
 }
 #toolbar button, #toolbar .seg { -webkit-app-region: no-drag; }
-.win-controls { display: flex; gap: 6px; padding-right: 2px; }
+.win-controls { display: flex; flex-direction: column; gap: 7px; padding-bottom: 2px; }
 .win-controls button { width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%; background: #4b5263; cursor: pointer; transition: background 0.15s; }
 #toolbar:hover #win-close { background: #ff5f57; }
 #toolbar:hover #win-min { background: #febc2e; }
-.nav-keys { display: flex; gap: 6px; }
+.nav-keys { display: flex; flex-direction: column; gap: 4px; }
 .nav-keys button {
-  width: 40px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 9px;
+  width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 9px;
   background: transparent; color: var(--text); cursor: pointer; transition: background 0.15s, color 0.15s;
 }
 .nav-keys button:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
 .nav-keys button:active { background: rgba(107, 179, 163, 0.22); color: var(--accent); }
 .nav-keys svg { width: 20px; height: 20px; }
 
-.seg { justify-self: start; display: inline-flex; padding: 2px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
+.seg { display: inline-flex; flex-direction: column; padding: 2px; border-radius: 8px; background: rgba(255, 255, 255, 0.06); }
 .seg button {
   width: 26px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--muted);
   font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer;
@@ -64,7 +64,10 @@ body {
 .seg button:hover { color: #fff; }
 .seg button[aria-checked="true"] { background: var(--accent); color: #fff; }
 
-.right { justify-self: end; display: flex; align-items: center; gap: 8px; }
+.right { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+/* Group separators on the rail */
+#toolbar > * + * { position: relative; }
+#toolbar > .seg, #toolbar > .nav-keys, #toolbar > .right { margin-top: 2px; }
 .icon-btn { width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
 .icon-btn:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
 .icon-btn svg { width: 18px; height: 18px; }
@@ -74,7 +77,9 @@ body {
 .live.error .live-dot { background: #ef4444; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-@media (max-width: 330px) { .live-text-hide, #live-text { display: none; } }
+/* The rail shows the status as a dot; the text is in the tooltip. */
+#live-text { display: none; }
+.live { padding: 6px 0 2px; }
 
 /* iOS: view-only for now — no Android navigation keys or keyboard */
 .platform-ios .nav-keys { visibility: hidden; }

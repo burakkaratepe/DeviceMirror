@@ -15,7 +15,8 @@ export const MAX_MIRRORS = 2;
 /** Input goes only to Android sessions for now (iOS touch arrives in Phase 5). */
 const controlOf = (e: { session?: AndroidMirrorSession | IosMirrorSession } | undefined) =>
   e?.session instanceof AndroidMirrorSession ? e.session : undefined;
-const TOOLBAR_HEIGHT = 56; // keep in sync with mirror.css
+/** Control rail to the right of the phone, margins included (mirror.css #toolbar). */
+const TOOLBAR_WIDTH = 58;
 const FRAME_PAD_X = 60; // room for the frame and side keys, well away from the resize edge (mirror.css #screen)
 const FRAME_PAD_Y = 28;
 const QUALITIES: Quality[] = ['low', 'medium', 'high'];
@@ -285,12 +286,12 @@ export class MirrorManager {
     const work = screen.getPrimaryDisplay().workAreaSize;
     const h = Math.min(860, work.height - 60);
     const ratio = device.preview ? device.preview.width / device.preview.height : 9 / 19.5;
-    const w = Math.round((h - TOOLBAR_HEIGHT - FRAME_PAD_Y) * ratio) + FRAME_PAD_X;
+    const w = Math.round((h - FRAME_PAD_Y) * ratio) + FRAME_PAD_X + TOOLBAR_WIDTH;
     const win = new BrowserWindow({
       width: Math.max(w, 300),
       height: h,
-      minWidth: 260,
-      minHeight: 320,
+      minWidth: 240,
+      minHeight: 460, // the control rail needs this much height
       title: device.name,
       // The window IS the device: no system frame, transparent around the
       // drawn phone (one frame instead of a window frame plus a phone frame).
@@ -343,15 +344,16 @@ export class MirrorManager {
     const first = !e.size;
     const rotated = first || (e.size!.width > e.size!.height) !== (width > height);
     e.size = { width, height };
-    e.win.setAspectRatio(width / height, { width: FRAME_PAD_X, height: TOOLBAR_HEIGHT + FRAME_PAD_Y });
+    e.win.setAspectRatio(width / height, { width: FRAME_PAD_X + TOOLBAR_WIDTH, height: FRAME_PAD_Y });
     if (!rotated || e.win.isMaximized() || e.win.isFullScreen()) return;
     const [, curH] = e.win.getContentSize();
     const work = screen.getDisplayMatching(e.win.getBounds()).workAreaSize;
-    const extraH = TOOLBAR_HEIGHT + FRAME_PAD_Y;
+    const extraH = FRAME_PAD_Y;
+    const extraW = FRAME_PAD_X + TOOLBAR_WIDTH;
     let videoH = Math.min(curH - extraH, work.height - 60 - extraH);
     let videoW = Math.round((videoH * width) / height);
-    if (videoW > work.width - 40 - FRAME_PAD_X) { videoW = work.width - 40 - FRAME_PAD_X; videoH = Math.round((videoW * height) / width); }
-    e.win.setContentSize(Math.max(videoW + FRAME_PAD_X, 260), videoH + extraH);
+    if (videoW > work.width - 40 - extraW) { videoW = work.width - 40 - extraW; videoH = Math.round((videoW * height) / width); }
+    e.win.setContentSize(Math.max(videoW + extraW, 240), videoH + extraH);
     // The real size is known now; keep the window clear of the other one.
     if (first) this.placeBesideOthers(e.win);
   }
