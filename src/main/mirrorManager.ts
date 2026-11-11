@@ -441,9 +441,14 @@ export class MirrorManager {
 
   private createWindow(device: Device): BrowserWindow {
     const work = screen.getPrimaryDisplay().workAreaSize;
-    const h = Math.min(860, work.height - 60);
+    // The phone's long side gets the upright height, so a phone on its side
+    // (landscape preview) opens as big as it would be upright, not huge.
+    const longSide = Math.min(860, work.height - 60) - FRAME_PAD_Y;
     const ratio = device.preview ? device.preview.width / device.preview.height : 9 / 19.5;
-    const w = Math.round((h - FRAME_PAD_Y) * ratio) + FRAME_PAD_X + TOOLBAR_WIDTH;
+    const videoW = ratio > 1 ? longSide : Math.round(longSide * ratio);
+    const videoH = ratio > 1 ? Math.round(longSide / ratio) : longSide;
+    const w = videoW + FRAME_PAD_X + TOOLBAR_WIDTH;
+    const h = Math.max(460, videoH + FRAME_PAD_Y);
     const win = new BrowserWindow({
       width: Math.max(w, 300),
       height: h,
@@ -501,8 +506,11 @@ export class MirrorManager {
     const first = !e.size;
     const rotated = first || (e.size!.width > e.size!.height) !== (width > height);
     e.size = { width, height };
-    e.win.setAspectRatio(width / height, { width: FRAME_PAD_X + TOOLBAR_WIDTH, height: FRAME_PAD_Y });
-    if (!rotated || e.win.isMaximized() || e.win.isFullScreen()) return;
+    // Resize first, then set the aspect ratio: macOS applies a new ratio at
+    // once by keeping the height, which made a landscape start flash huge.
+    const lockRatio = () => e.win.setAspectRatio(width / height, { width: FRAME_PAD_X + TOOLBAR_WIDTH, height: FRAME_PAD_Y });
+    if (!rotated || e.win.isMaximized() || e.win.isFullScreen()) { lockRatio(); return; }
+    e.win.setAspectRatio(0); // no ratio while resizing
     const [curW, curH] = e.win.getContentSize();
     const bounds = e.win.getBounds();
     const workArea = screen.getDisplayMatching(bounds).workArea;
@@ -513,7 +521,8 @@ export class MirrorManager {
     // (its long side stays as long), so it looks like the same phone turned.
     // In both cases the phone's long side keeps its length (a phone that starts
     // in landscape is as big as it would be upright).
-    const longSide = first ? Math.min(curH - extraH, work.height - 60 - extraH) : Math.max(curW - extraW, curH - extraH);
+    // (The window was created with that long side already, see createWindow.)
+    const longSide = Math.min(Math.max(curW - extraW, curH - extraH), Math.max(work.width - 40 - extraW, work.height - 60 - extraH));
     let videoH = Math.round(longSide * (width > height ? height / width : 1));
     let videoW = Math.round((videoH * width) / height);
     if (videoH > work.height - 60 - extraH) { videoH = work.height - 60 - extraH; videoW = Math.round((videoH * width) / height); }
@@ -528,6 +537,7 @@ export class MirrorManager {
       const y = Math.round(Math.min(Math.max(workArea.y, cy - outH / 2), workArea.y + workArea.height - outH));
       e.win.setBounds({ x, y, width: outW, height: outH });
     }
+    lockRatio();
     // The real size is known now; keep the window clear of the other one.
     if (first) this.placeBesideOthers(e.win);
   }

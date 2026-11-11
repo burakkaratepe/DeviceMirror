@@ -373,6 +373,10 @@ function layoutFrame() {
   bezel.hidden = false;
   Object.assign(keys.style, { left: bezel.style.left, top: bezel.style.top, width: bezel.style.width, height: bezel.style.height });
   Object.assign(fx.style, { left: `${left}px`, top: `${top}px`, width: `${vw}px`, height: `${vh}px`, borderRadius: `${radius}px` });
+  // Status and touch invite cover exactly the screen, whichever way it lies.
+  for (const layer of [overlay, document.getElementById('invite')!]) {
+    Object.assign(layer.style, { inset: 'auto', left: `${left}px`, top: `${top}px`, width: `${vw}px`, height: `${vh}px`, borderRadius: `${radius}px` });
+  }
   fx.hidden = false;
   keys.hidden = false;
   const bw = vw + 2 * border, bh = vh + 2 * border;
