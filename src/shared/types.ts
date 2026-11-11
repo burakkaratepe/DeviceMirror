@@ -161,6 +161,8 @@ export interface DeviceMirrorApi {
   setQuality(deviceId: string, quality: Quality): Promise<void>;
   /** Opens (or focuses) a mirror window; `replaceId` closes that mirror first. */
   mirror(deviceId: string, replaceId?: string): Promise<MirrorResult>;
+  /** The Devices page is on screen (previews refresh only then). */
+  setDevicesPageShown(shown: boolean): void;
   listCaptures(): Promise<Capture[]>;
   onCapturesChanged(cb: () => void): void;
   /** Saves a copy where the user picks; false when cancelled. */

@@ -11,14 +11,14 @@
 // Commands (stdin, one JSON object per line):
 //   {"cmd":"stream","id":1,"udid":"…","name":"iPhone 13","shortSide":1080,"bitRate":6000000,"fps":60}
 //   {"cmd":"stop","id":1}
-//   {"cmd":"snapshot","id":2,"udid":"…","name":"iPhone 13"}
+//   {"cmd":"snapshot","id":2,"udid":"…","name":"iPhone 13","maxSide":480}
 //
 // Output frames (stdout): [type u8][id u32 BE][length u32 BE][payload]
 //   1 codec   utf8 WebCodecs codec string ("avc1.640033")
 //   2 size    u32 width, u32 height (encoded size)
 //   3 packet  u8 flags (bit0 key frame), u64 pts in µs, Annex-B H.264 data
 //   4 error   utf8 message (the request is over)
-//   5 image   PNG (snapshot result; the request is over)
+//   5 image   JPEG (snapshot result, scaled to maxSide; the request is over)
 //
 // The helper exits when stdin closes, so it never outlives the app.
 
@@ -200,6 +200,8 @@ final class Request {
     var encoder: Encoder?
     var sourceSize = (0, 0)
     var lastFrame = 0.0
+    /** Snapshot: longest side of the JPEG (0 = 960). */
+    var maxSide = 0
 
     init(id: UInt32, snapshot: Bool, shortSide: Int, bitRate: Int, fps: Int) {
         self.id = id
@@ -325,12 +327,15 @@ final class DeviceCapture: NSObject, AVCaptureVideoDataOutputSampleBufferDelegat
     private func finishSnapshot(_ r: Request, _ px: CVPixelBuffer) {
         requests[r.id] = nil
         let image = CIImage(cvPixelBuffer: px)
-        let scale = min(1, 960 / max(image.extent.width, image.extent.height))
+        // Card previews are small: scale down here and send a JPEG, instead of
+        // a full-size PNG that the app would shrink anyway.
+        let longEdge = r.maxSide > 0 ? CGFloat(r.maxSide) : 960
+        let scale = min(1, longEdge / max(image.extent.width, image.extent.height))
         let scaled = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let data = NSMutableData()
         if let cg = CIContext().createCGImage(scaled, from: scaled.extent),
-           let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) {
-            CGImageDestinationAddImage(dest, cg, nil)
+           let dest = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) {
+            CGImageDestinationAddImage(dest, cg, [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
             CGImageDestinationFinalize(dest)
             emit(5, r.id, data as Data)
         } else {
@@ -410,7 +415,9 @@ func handle(_ line: String) {
                         bitRate: (obj["bitRate"] as? NSNumber)?.intValue ?? 6_000_000, fps: (obj["fps"] as? NSNumber)?.intValue ?? 60)
         start(r, udid: udid, name: name)
     case "snapshot":
-        start(Request(id: id, snapshot: true, shortSide: 0, bitRate: 0, fps: 1), udid: udid, name: name)
+        let r = Request(id: id, snapshot: true, shortSide: 0, bitRate: 0, fps: 1)
+        r.maxSide = (obj["maxSide"] as? NSNumber)?.intValue ?? 0
+        start(r, udid: udid, name: name)
     case "stop":
         if let key = owner.removeValue(forKey: id) { captures[key]?.remove(id) }
     default:

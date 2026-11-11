@@ -159,6 +159,7 @@ function render(s: DeviceSnapshot) {
 function showView(view: 'devices' | 'captures') {
   $<HTMLDivElement>('view-devices').hidden = view !== 'devices';
   $<HTMLDivElement>('view-captures').hidden = view !== 'captures';
+  api.setDevicesPageShown(view === 'devices');
   for (const b of document.querySelectorAll<HTMLButtonElement>('.nav-item')) {
     const on = b.dataset.view === view;
     b.classList.toggle('active', on);

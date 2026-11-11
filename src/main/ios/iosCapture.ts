@@ -161,7 +161,7 @@ export function iosSnapshot(helperPath: string, udid: string, name: string): Pro
   if (streaming.has(udid)) return Promise.reject(new Error('busy'));
   return new Promise((resolve, reject) => {
     const helper = helperFor(helperPath);
-    const id = helper.request({ cmd: 'snapshot', udid, name }, (type, p) => {
+    const id = helper.request({ cmd: 'snapshot', udid, name, maxSide: 480 }, (type, p) => {
       if (type !== 4 && type !== 5) return;
       helper.done(id);
       clearTimeout(timer);

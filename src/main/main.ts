@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
 import path from 'node:path';
-import { findAdb } from './android/adb';
+import { findAdb, type RawImage } from './android/adb';
 import { DeviceManager } from './deviceManager';
 import { findIosHelper, iosSnapshot, shutdownIosHelpers } from './ios/iosCapture';
 import { IosRunnerManager } from './ios/runner';
@@ -19,8 +19,9 @@ const SPLASH_MAX_WAIT_MS = 4000; // never hold the main window back longer than 
 const SPLASH_FADE_MS = 250;
 
 /** Downscales a full screenshot to a small JPEG data URL (~20–40 KB). */
-function makePreview(png: Buffer): Preview | undefined {
-  const img = nativeImage.createFromBuffer(png);
+/** A card preview from an encoded image (PNG/JPEG) or raw BGRA pixels. */
+function makePreview(src: Buffer | RawImage): Preview | undefined {
+  const img = Buffer.isBuffer(src) ? nativeImage.createFromBuffer(src) : nativeImage.createFromBitmap(src.bgra, { width: src.width, height: src.height });
   if (img.isEmpty()) return undefined;
   const { width, height } = img.getSize();
   const scale = PREVIEW_LONG_EDGE / Math.max(width, height);
@@ -89,6 +90,12 @@ function closeSplash() {
   setTimeout(() => { if (!s.isDestroyed()) s.close(); }, SPLASH_FADE_MS);
 }
 
+/** Which page the main window shows (from the renderer). */
+let devicesPageShown = true;
+function updatePreviewsActive() {
+  manager?.setPreviewsActive(!!win && !win.isDestroyed() && win.isVisible() && !win.isMinimized() && devicesPageShown);
+}
+
 function createWindow(firstLaunch: boolean) {
   win = new BrowserWindow({
     width: 1120,
@@ -108,7 +115,9 @@ function createWindow(firstLaunch: boolean) {
   });
   win.removeMenu();
   void win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.on('closed', () => { win = undefined; });
+  win.on('closed', () => { win = undefined; updatePreviewsActive(); });
+  // Card previews refresh only while the device list can be seen.
+  for (const ev of ['show', 'hide', 'minimize', 'restore'] as const) win.on(ev as 'show', updatePreviewsActive);
 
   if (!firstLaunch) {
     win.once('ready-to-show', () => win?.show());
@@ -196,6 +205,7 @@ app.whenReady().then(() => {
     },
   });
 
+  manager.isMirroring = (id) => mirrors!.isMirroring(id);
   manager.onSnapshot((s) => {
     mirrors!.syncDevices(s.devices);
     pushSnapshot();
@@ -203,6 +213,7 @@ app.whenReady().then(() => {
   manager.start();
 
   ipcMain.handle('devices:get', () => snapshot());
+  ipcMain.on('devices:pageShown', (_e, shown: unknown) => { devicesPageShown = shown === true; updatePreviewsActive(); });
   ipcMain.handle('devices:setQuality', (_e, id: unknown, q: unknown) => {
     if (typeof id !== 'string' || !QUALITIES.includes(q as Quality)) return;
     mirrors!.setQuality(id, q as Quality);

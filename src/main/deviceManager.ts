@@ -1,7 +1,7 @@
 // Merges Android (adb) and iOS (usbmuxd) device events into one list and
 // pushes snapshots to listeners whenever anything changes.
 
-import { AdbTracker, isScreenOn, screenshotPng, shell, type AdbDeviceEntry } from './android/adb';
+import { AdbTracker, isScreenOn, screenshotRaw, shell, type AdbDeviceEntry, type RawImage } from './android/adb';
 import { hasPairRecord, lockdownGetValues, UsbmuxListener, type UsbmuxDevice } from './ios/usbmux';
 import { ANDROID_MARKET_NAME_PROPS, androidMarketingName, iosMarketingName } from './modelNames';
 import type { Settings } from './settings';
@@ -16,13 +16,25 @@ const TRUST_POLL_MS = 2000;
  */
 const IOS_DETACH_GRACE_MS = 2000;
 
+/**
+ * Card previews are refreshed while the device list is on screen.
+ * Android: a raw screencap is ~0.8 s of USB transfer and almost no phone CPU,
+ * so every 30 s. iOS: each snapshot starts a short capture session (the phone
+ * encodes its screen for a moment), so every 60 s. Devices being mirrored are
+ * skipped (their window shows them live); failures back off.
+ */
+const ANDROID_PREVIEW_MS = 30_000;
+const IOS_PREVIEW_MS = 60_000;
+/** On coming back to the list, previews older than this are refreshed at once. */
+const STALE_ON_SHOW_MS = 15_000;
+
 interface AndroidDetails { name: string; model?: string; osVersion?: string }
-interface IosEntry { usb: UsbmuxDevice; device: Device; trustTimer?: NodeJS.Timeout; previewTaken?: boolean; previewTries?: number; previewTimer?: NodeJS.Timeout; goneTimer?: NodeJS.Timeout }
+interface IosEntry { usb: UsbmuxDevice; device: Device; trustTimer?: NodeJS.Timeout; goneTimer?: NodeJS.Timeout }
 
 export interface IosSupport {
   /** iOS mirroring is possible on this computer (macOS with the capture helper). */
   mirror: boolean;
-  /** One PNG of the device screen; used for the card preview. */
+  /** A small JPEG of the device screen; used for the card preview. */
   snapshot?: (udid: string, name: string) => Promise<Buffer>;
 }
 
@@ -38,6 +50,14 @@ export class DeviceManager {
   private usbmux: UsbmuxListener;
 
   private androidPreview = new Map<string, { preview?: Preview; screenOff?: boolean }>();
+  /** Per device id: when its preview was last tried, consecutive failures, in flight. */
+  private previewAt = new Map<string, number>();
+  private previewFails = new Map<string, number>();
+  private previewBusy = new Set<string>();
+  private previewTicker: NodeJS.Timeout | undefined;
+  private previewsActive = true;
+  /** Set by the app: devices with an open mirror window are not snapshotted. */
+  isMirroring: (deviceId: string) => boolean = () => false;
 
   /**
    * @param makePreview turns a full PNG screenshot into a small preview; the
@@ -47,7 +67,7 @@ export class DeviceManager {
   constructor(
     private settings: Settings,
     resolveAdb: () => string | undefined,
-    private makePreview?: (png: Buffer) => Preview | undefined,
+    private makePreview?: (image: Buffer | RawImage) => Preview | undefined,
     private iosSupport: IosSupport = { mirror: false },
   ) {
     this.adb = new AdbTracker(
@@ -65,12 +85,41 @@ export class DeviceManager {
     });
   }
 
-  start() { this.adb.start(); this.usbmux.start(); }
+  start() {
+    this.adb.start();
+    this.usbmux.start();
+    this.previewTicker = setInterval(() => this.refreshDuePreviews(), 5000);
+  }
+
+  /** The device list is visible (true) or hidden/minimized (false): previews only refresh while visible. */
+  setPreviewsActive(active: boolean) {
+    const wasActive = this.previewsActive;
+    this.previewsActive = active;
+    if (active && !wasActive) this.refreshDuePreviews(STALE_ON_SHOW_MS);
+  }
+
+  private refreshDuePreviews(maxAge?: number) {
+    if (!this.previewsActive || !this.makePreview) return;
+    const now = Date.now();
+    const due = (id: string, period: number) => {
+      if (this.previewBusy.has(id) || this.isMirroring(id)) return false;
+      const fails = this.previewFails.get(id) ?? 0;
+      const wait = maxAge ?? period * Math.min(4, 1 + fails);
+      return now - (this.previewAt.get(id) ?? 0) >= wait;
+    };
+    for (const d of this.android.values()) {
+      if (d.state === 'ready' && due(d.id, ANDROID_PREVIEW_MS)) void this.captureAndroidPreview(d.serial);
+    }
+    for (const [key, e] of this.ios) {
+      if (e.device.state === 'ready' && !e.goneTimer && due(e.device.id, IOS_PREVIEW_MS)) void this.captureIosPreview(key);
+    }
+  }
 
   stop() {
     this.adb.stop();
     this.usbmux.stop();
-    for (const e of this.ios.values()) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); clearTimeout(e.previewTimer); }
+    clearInterval(this.previewTicker);
+    for (const e of this.ios.values()) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); }
   }
 
   onSnapshot(cb: (s: DeviceSnapshot) => void): () => void {
@@ -161,25 +210,28 @@ export class DeviceManager {
     }
   }
 
-  /** One screenshot per connection, taken when the device becomes ready. */
+  /** Screenshot for the card: when the device becomes ready, then every ANDROID_PREVIEW_MS. */
   private async captureAndroidPreview(serial: string) {
-    if (!this.makePreview || this.androidPreview.has(serial)) return;
-    this.androidPreview.set(serial, {}); // mark as in progress / done
-    let result: { preview?: Preview; screenOff?: boolean } = {};
-    try {
-      if (!(await isScreenOn(serial))) result = { screenOff: true };
-      else result = { preview: this.makePreview(await screenshotPng(serial)) };
-    } catch {
-      // screenshot failed (secure screen, device busy): keep the illustration
-    }
-    if (!this.androidPreview.has(serial)) return; // unplugged meanwhile
-    this.androidPreview.set(serial, result);
     const id = `android:${serial}`;
-    const cur = this.android.get(id);
-    if (cur?.state === 'ready') {
-      this.android.set(id, { ...cur, ...result });
-      this.emit();
+    if (!this.makePreview || this.previewBusy.has(id)) return;
+    this.previewBusy.add(id);
+    this.previewAt.set(id, Date.now());
+    let result: { preview?: Preview; screenOff?: boolean } | undefined;
+    try {
+      if (!(await isScreenOn(serial))) result = { screenOff: true, preview: this.androidPreview.get(serial)?.preview };
+      else result = { preview: this.makePreview(await screenshotRaw(serial)) };
+      this.previewFails.delete(id);
+    } catch {
+      // secure screen, device busy…: keep what the card shows
+      this.previewFails.set(id, (this.previewFails.get(id) ?? 0) + 1);
+    } finally {
+      this.previewBusy.delete(id);
     }
+    const cur = this.android.get(id);
+    if (!result || cur?.state !== 'ready') return; // failed, or unplugged meanwhile
+    this.androidPreview.set(serial, result);
+    this.android.set(id, { ...cur, ...result, screenOff: result.screenOff });
+    this.emit();
   }
 
   // ---- iOS ---------------------------------------------------------------
@@ -190,11 +242,10 @@ export class DeviceManager {
     // usbmuxd can report the same UDID twice (USB + network), or again right
     // after a brief re-enumeration; keep one entry and what we already know.
     let previous: IosEntry | undefined;
-    for (const [k, e] of this.ios) if (e.device.id === id) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); clearTimeout(e.previewTimer); previous = e; this.ios.delete(k); }
+    for (const [k, e] of this.ios) if (e.device.id === id) { clearTimeout(e.trustTimer); clearTimeout(e.goneTimer); previous = e; this.ios.delete(k); }
     if (previous?.goneTimer) {
       // Back within the grace period: keep the card (name, preview) as it was.
-      clearTimeout(previous.previewTimer);
-      this.ios.set(usb.deviceId, { usb, device: previous.device, previewTaken: !!previous.device.preview, previewTries: previous.previewTries });
+      this.ios.set(usb.deviceId, { usb, device: previous.device });
       void this.refreshIos(usb.deviceId, false);
       return;
     }
@@ -210,7 +261,7 @@ export class DeviceManager {
     const e = this.ios.get(deviceId);
     if (!e || e.goneTimer) return;
     clearTimeout(e.trustTimer);
-    const remove = () => { if (this.ios.get(deviceId) === e) { clearTimeout(e.previewTimer); this.ios.delete(deviceId); this.emit(); } };
+    const remove = () => { if (this.ios.get(deviceId) === e) { this.ios.delete(deviceId); this.previewAt.delete(e.device.id); this.previewFails.delete(e.device.id); this.emit(); } };
     if (immediate) remove();
     else e.goneTimer = setTimeout(remove, IOS_DETACH_GRACE_MS);
   }
@@ -238,32 +289,36 @@ export class DeviceManager {
     };
     this.emit();
     if (!paired) cur.trustTimer = setTimeout(() => void this.refreshIos(deviceId, false), TRUST_POLL_MS);
-    else void this.captureIosPreview(deviceId);
+    else if (!cur.device.preview) void this.captureIosPreview(deviceId); // later ones come from the ticker
   }
 
-  /** One screenshot per connection (only once camera access was granted). */
+  /**
+   * Screenshot for the card: once the device is paired, then every
+   * IOS_PREVIEW_MS (needs camera access; fails while locked or asleep). The
+   * first one is retried sooner, since the capture can take a while to come
+   * up after plugging in.
+   */
   private async captureIosPreview(deviceId: number) {
     const entry = this.ios.get(deviceId);
-    if (!entry || entry.previewTaken || !this.iosSupport.snapshot || !this.makePreview) return;
-    entry.previewTaken = true;
+    if (!entry || !this.iosSupport.snapshot || !this.makePreview) return;
+    const id = entry.device.id;
+    if (this.previewBusy.has(id) || this.isMirroring(id)) return;
+    this.previewBusy.add(id);
+    this.previewAt.set(id, Date.now());
     try {
-      const png = await this.iosSupport.snapshot(entry.usb.udid, entry.device.name);
-      const cur = this.ios.get(deviceId);
+      const jpeg = await this.iosSupport.snapshot(entry.usb.udid, entry.device.name);
+      this.previewFails.delete(id);
+      const cur = [...this.ios.values()].find((e) => e.device.id === id);
       if (!cur) return;
-      cur.device = { ...cur.device, preview: this.makePreview(png) };
+      cur.device = { ...cur.device, preview: this.makePreview(jpeg) };
       this.emit();
-    } catch (err) {
-      // Locked, busy mirroring, capture not up yet (it can take a while after
-      // plugging in), no camera permission…: keep the illustration and try
-      // again a few times.
-      const cur = this.ios.get(deviceId);
-      if (!cur || cur !== entry) return;
-      const tries = (cur.previewTries ?? 0) + 1;
-      cur.previewTries = tries;
-      if (tries < 5) {
-        cur.previewTaken = false;
-        cur.previewTimer = setTimeout(() => void this.captureIosPreview(deviceId), String(err).includes('busy') ? 30000 : 8000 * tries);
-      }
+    } catch {
+      const fails = (this.previewFails.get(id) ?? 0) + 1;
+      this.previewFails.set(id, fails);
+      // No picture yet: try again soon a few times (the ticker handles the rest).
+      if (!entry.device.preview && fails <= 4) this.previewAt.set(id, Date.now() - IOS_PREVIEW_MS * Math.min(4, 1 + fails) + 10_000);
+    } finally {
+      this.previewBusy.delete(id);
     }
   }
 }

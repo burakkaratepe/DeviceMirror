@@ -10,7 +10,7 @@ loadAndroidModels('resources/android-models.tsv.gz');
 
 const seconds = Number(process.argv[2] ?? 8);
 // No image library here: report the screenshot size instead of encoding it.
-const manager = new DeviceManager(new Settings(undefined), () => findAdb(), (png) => ({ url: '', width: png.length, height: 0 }));
+const manager = new DeviceManager(new Settings(undefined), () => findAdb(), (img) => ({ url: '', width: Buffer.isBuffer(img) ? img.length : img.width, height: Buffer.isBuffer(img) ? 0 : img.height }));
 const t0 = Date.now();
 manager.onSnapshot((s) => {
   const t = ((Date.now() - t0) / 1000).toFixed(2);

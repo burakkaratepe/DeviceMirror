@@ -10,6 +10,7 @@ const api: DeviceMirrorApi = {
   },
   setQuality: (id: string, q: Quality) => ipcRenderer.invoke('devices:setQuality', id, q),
   mirror: (id: string, replaceId?: string) => ipcRenderer.invoke('devices:mirror', id, replaceId),
+  setDevicesPageShown: (shown) => ipcRenderer.send('devices:pageShown', shown),
   listCaptures: () => ipcRenderer.invoke('captures:list'),
   onCapturesChanged: (cb) => { ipcRenderer.on('captures:changed', () => cb()); },
   downloadCapture: (id) => ipcRenderer.invoke('captures:download', id),

@@ -137,6 +137,24 @@ export async function isScreenOn(serial: string, port?: number): Promise<boolean
   return /mWakefulness=Awake/.test(out) || !/mWakefulness=/.test(out); // unknown → assume on
 }
 
+/**
+ * The screen as raw pixels (no PNG encoding on the phone: that encoding took
+ * most of the ~1.8 s and kept a core busy; raw takes ~0.8 s). Pixels are
+ * returned as BGRA, ready for nativeImage.createFromBitmap.
+ */
+export async function screenshotRaw(serial: string, port?: number): Promise<RawImage> {
+  const buf = await exec(serial, 'screencap', port);
+  if (buf.length < 12) throw new Error('screencap returned nothing');
+  const width = buf.readUInt32LE(0), height = buf.readUInt32LE(4), format = buf.readUInt32LE(8);
+  const header = buf.length - width * height * 4; // 12 bytes, or 16 with a colour-space field (Android 12+)
+  if (format !== 1 || (header !== 12 && header !== 16)) throw new Error(`unexpected screencap format ${format}`);
+  const px = buf.subarray(header);
+  for (let i = 0; i < px.length; i += 4) { const r = px[i]; px[i] = px[i + 2]; px[i + 2] = r; } // RGBA → BGRA
+  return { width, height, bgra: px };
+}
+
+export interface RawImage { width: number; height: number; bgra: Buffer }
+
 /** Full-resolution PNG screenshot of the device. */
 export async function screenshotPng(serial: string, port?: number): Promise<Buffer> {
   const png = await exec(serial, 'screencap -p', port);
