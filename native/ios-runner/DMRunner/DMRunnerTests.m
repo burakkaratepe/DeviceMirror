@@ -19,6 +19,7 @@
 //   op 4 home
 //   op 5 hardware button  payload f32 button (2 volume up, 3 volume down, 100 lock)
 //   op 6 ping
+//   op 7 wake (a Shift key press: wakes a sleeping screen, harmless when it is on)
 //   x/y are normalized 0…1 of the portrait screen.
 // Device → Mac:
 //   hello 16 bytes: u8 0x80, u8 version, u8 pad[2], f32 width pt, f32 height pt, f32 scale
@@ -254,6 +255,8 @@ static BOOL synthesize(XCPointerEventPath *path) {
       }
       return NO;
     }
+    case 7: // wake: an external keyboard key wakes the display like on a real iPhone
+      return pressHID(0x07, 0xE1, 0.05); // keyboard page, Left Shift
     default: // ping
       return YES;
   }

@@ -12,7 +12,9 @@ lipo -create -output "$TMP/ios-capture" "$TMP/ios-capture-arm64" "$TMP/ios-captu
 strip -x "$TMP/ios-capture"
 for DIR in mac-arm64 mac-x64; do
   mkdir -p "resources/bin/$DIR"
-  cp "$TMP/ios-capture" "resources/bin/$DIR/ios-capture"
+  # copy then rename: replaces the file without touching a copy that is running
+  cp "$TMP/ios-capture" "resources/bin/$DIR/ios-capture.new"
+  mv -f "resources/bin/$DIR/ios-capture.new" "resources/bin/$DIR/ios-capture"
 done
 rm -rf "$TMP"
 ls -la resources/bin/mac-arm64/ios-capture

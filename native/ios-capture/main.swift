@@ -378,7 +378,9 @@ func start(_ r: Request, udid: String, name: String) {
             cap.add(r)
             return
         }
-        findDevice(udid: udid, name: name, timeout: r.snapshot ? 8 : 30) { device in
+        // A stream waits up to 10 minutes: a sleeping iPhone offers no screen until
+        // it is woken (the app shows a hint meanwhile).
+        findDevice(udid: udid, name: name, timeout: r.snapshot ? 8 : 600) { device in
                 if let cap = captures[key] { owner[r.id] = key; cap.add(r); return } // raced with another request
                 guard let device, let cap = DeviceCapture(device: device, key: key) else {
                     emit(4, r.id, Data("The iOS screen did not become available. Unlock the device, make sure it trusts this computer, and try again.".utf8))

@@ -29,6 +29,8 @@ interface Entry {
   touch?: IosTouchClient;
   /** iOS: the user switched touch off; do not reconnect on our own. */
   touchOff?: boolean;
+  /** iOS: a wake-up of the sleeping screen is in progress. */
+  waking?: boolean;
   /** Last frame size, to keep the window's aspect ratio in step with rotation. */
   size?: { width: number; height: number };
   status: MirrorStatus;
@@ -159,6 +161,8 @@ export class MirrorManager {
       }
     };
     this.send(e, 'mirror:touch', true);
+    // Touch just came on while the window waits for a sleeping screen: wake it now.
+    if (e.status.state === 'waiting') void this.wakeIos(e);
   }
 
   /** The device / window behind a mirror window's webContents (for IPC handlers). */
@@ -249,6 +253,44 @@ export class MirrorManager {
     this.send(e, 'mirror:status', s);
   }
 
+  /**
+   * An iPhone with its screen off offers no picture at all. There is no USB
+   * service that wakes it, so the touch runner does it when it is running:
+   * first a Shift key press (wakes the display like an external keyboard,
+   * harmless if the screen was on), then the side button if it is still dark.
+   * Without the runner the window says how to wake it by hand.
+   */
+  private async wakeIos(e: Entry) {
+    if (e.waking) return;
+    const name = e.device.name;
+    const stillDark = () => this.entries.get(e.device.id) === e && e.status.state !== 'live' && e.status.state !== 'error';
+    const byHand = `The screen of ${name} is off. Press its side button to wake it.`;
+    let client = e.touch;
+    let temporary = false;
+    if (!client) {
+      try { client = await IosTouchClient.connect(e.device.serial, 1500); temporary = true; } catch { client = undefined; }
+    }
+    if (!stillDark()) { if (temporary) client?.close(); return; }
+    if (!client) {
+      this.setStatus(e, { state: 'waiting', message: `${byHand} With touch control on, Device Mirror wakes it for you.` });
+      return;
+    }
+    e.waking = true;
+    try {
+      this.setStatus(e, { state: 'waiting', message: `Waking the screen of ${name}…` });
+      await client.wake();
+      await new Promise((r) => setTimeout(r, 2000));
+      if (stillDark()) {
+        await client.button('lock'); // the side button wakes it if the key press did not
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+      if (stillDark()) this.setStatus(e, { state: 'waiting', message: byHand });
+    } finally {
+      e.waking = false;
+      if (temporary) client.close();
+    }
+  }
+
   private async startSession(e: Entry) {
     e.session?.close();
     e.session = undefined;
@@ -264,6 +306,10 @@ export class MirrorManager {
         this.send(e, 'mirror:video', v); // Buffers arrive in the renderer as Uint8Array (MirrorVideo)
       },
       onDeviceName: () => undefined,
+      onNoPicture: () => {
+        if (e.session !== session || !firstFrame) return;
+        void this.wakeIos(e);
+      },
       onClosed: (err) => {
         if (e.session !== session) return;
         e.session = undefined;

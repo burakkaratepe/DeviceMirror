@@ -49,6 +49,8 @@ export type MirrorVideo =
 export type MirrorStatus =
   | { state: 'connecting' }
   | { state: 'live' }
+  /** Connected but no picture yet (an iPhone with its screen off); message says what to do. */
+  | { state: 'waiting'; message: string }
   | { state: 'error'; message: string };
 
 export interface MirrorInfo { deviceId: string; serial: string; name: string; platform: Platform; quality: Quality }

@@ -50,6 +50,8 @@ export interface SessionEvents {
   onVideo(e: VideoEvent): void;
   onDeviceName(name: string): void;
   onClosed(error?: Error): void;
+  /** iOS: no picture after a short while (the screen is probably off). */
+  onNoPicture?(): void;
 }
 
 /** Buffered reader for a socket that hands out exact byte counts. */

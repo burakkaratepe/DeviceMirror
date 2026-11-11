@@ -128,6 +128,9 @@ export class IosTouchClient {
 
   home() { return this.enqueue(4, 0, Buffer.alloc(0)); }
 
+  /** Wakes a sleeping screen with a keyboard key press (harmless when it is on). */
+  wake() { return this.enqueue(7, 0, Buffer.alloc(0)); }
+
   /** Side buttons: 'volumeUp' | 'volumeDown' | 'lock'. */
   button(which: 'volumeUp' | 'volumeDown' | 'lock') {
     const p = Buffer.alloc(12);

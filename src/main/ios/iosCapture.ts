@@ -115,9 +115,12 @@ export class IosMirrorSession {
     streaming.add(this.udid);
     return new Promise((resolve, reject) => {
       let started = false;
+      // A sleeping iPhone sends nothing until it is woken: say so early, then
+      // keep waiting (up to 10 minutes) instead of failing.
+      const darkTimer = setTimeout(() => { if (!started && !this.closed) this.events.onNoPicture?.(); }, 2500);
       const firstFrameTimer = setTimeout(() => {
-        if (!started) this.close(new Error('No picture arrived from the iOS device. Unlock it, keep the screen on, and try again.'));
-      }, 35000);
+        if (!started) this.close(new Error('No picture arrived from the iOS device. Wake and unlock it, then try again.'));
+      }, 600000);
       const helper = helperFor(this.helperPath);
       this.id = helper.request(
         { cmd: 'stream', udid: this.udid, name: this.name, shortSide: this.quality.shortSide, bitRate: this.quality.bitRate, fps: this.quality.maxFps },
@@ -129,10 +132,11 @@ export class IosMirrorSession {
             this.height = p.readUInt32BE(4);
             this.events.onVideo({ type: 'size', width: this.width, height: this.height });
           } else if (type === 3) {
-            if (!started) { started = true; clearTimeout(firstFrameTimer); resolve(); }
+            if (!started) { started = true; clearTimeout(firstFrameTimer); clearTimeout(darkTimer); resolve(); }
             this.events.onVideo({ type: 'packet', key: (p[0] & 1) === 1, pts: Number(p.readBigUInt64BE(1)), data: p.subarray(9) });
           } else if (type === 4) {
             clearTimeout(firstFrameTimer);
+            clearTimeout(darkTimer);
             const err = new Error(p.toString('utf8'));
             if (!started) reject(err);
             if (this.id !== undefined) helper.done(this.id);
