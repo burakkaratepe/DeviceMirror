@@ -179,17 +179,18 @@ button.link:hover { text-decoration: underline; }
 #bezel[hidden] { display: none; }
 #screen { z-index: 1; }
 .side-btn {
-  position: absolute; width: 5px; padding: 0; border: 0; border-radius: 2px; pointer-events: auto; cursor: pointer;
-  background: linear-gradient(90deg, #5b616d, #3a3f48); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 1px 3px rgba(0, 0, 0, 0.5);
+  position: absolute; width: 4px; padding: 0; border: 0; pointer-events: auto; cursor: pointer;
+  background: linear-gradient(90deg, #3d424c, #2a2e35); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   transition: transform 0.12s ease, filter 0.12s ease;
 }
-/* Buttons stick out of the frame; hover nudges them in a hair, a press pushes them in. */
-.side-btn.left { left: -4px; }
-.side-btn.right { right: -4px; }
-.side-btn.left:hover { transform: translateX(0.6px); filter: brightness(1.15); }
-.side-btn.right:hover { transform: translateX(-0.6px); filter: brightness(1.15); }
-.side-btn.left:active, .side-btn.left.pressed { transform: translateX(2.5px); transition-duration: 0.05s; filter: brightness(0.9); }
-.side-btn.right:active, .side-btn.right.pressed { transform: translateX(-2.5px); transition-duration: 0.05s; filter: brightness(0.9); }
+/* Attached to the OUTSIDE of the frame, like real keys: hover nudges them in
+   a hair, a press pushes them most of the way in. */
+.side-btn.left { right: 100%; border-radius: 3px 0 0 3px; }
+.side-btn.right { left: 100%; border-radius: 0 3px 3px 0; background: linear-gradient(90deg, #2a2e35, #3d424c); }
+.side-btn.left:hover { transform: translateX(0.5px); filter: brightness(1.25); }
+.side-btn.right:hover { transform: translateX(-0.5px); filter: brightness(1.25); }
+.side-btn.left:active, .side-btn.left.pressed { transform: translateX(2.5px); transition-duration: 0.05s; filter: brightness(0.85); }
+.side-btn.right:active, .side-btn.right.pressed { transform: translateX(-2.5px); transition-duration: 0.05s; filter: brightness(0.85); }
 .side-btn.locked { opacity: 0.45; cursor: not-allowed; }
 .side-btn[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .side-btn { transition: none; } }
