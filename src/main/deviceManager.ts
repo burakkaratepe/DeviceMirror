@@ -3,6 +3,7 @@
 
 import { AdbTracker, isScreenOn, screenshotPng, shell, type AdbDeviceEntry } from './android/adb';
 import { hasPairRecord, lockdownGetValues, UsbmuxListener, type UsbmuxDevice } from './ios/usbmux';
+import { ANDROID_MARKET_NAME_PROPS, androidMarketingName, iosMarketingName } from './modelNames';
 import type { Settings } from './settings';
 import type { Device, DeviceSnapshot, DeviceState, Preview, ServiceStatus } from '../shared/types';
 
@@ -133,9 +134,10 @@ export class DeviceManager {
     if (this.androidPending.has(serial)) return;
     this.androidPending.add(serial);
     try {
-      const out = await shell(serial, 'getprop ro.product.manufacturer; getprop ro.product.model; getprop ro.build.version.release');
-      const [manufacturer = '', model = '', release = ''] = out.split(/\r?\n/).map((s) => s.trim());
-      const name = [capitalize(manufacturer), model].filter(Boolean).join(' ') || serial;
+      const props = ['ro.product.manufacturer', 'ro.product.model', 'ro.build.version.release', ...ANDROID_MARKET_NAME_PROPS];
+      const out = await shell(serial, props.map((p) => `getprop ${p}`).join('; '));
+      const [manufacturer = '', model = '', release = '', ...market] = out.split(/\r?\n/).map((s) => s.trim());
+      const name = androidMarketingName(model, market.find(Boolean)) ?? ([capitalize(manufacturer), model].filter(Boolean).join(' ') || serial);
       this.androidDetails.set(serial, { name, model: model || undefined, osVersion: release ? `Android ${release}` : undefined });
     } catch {
       this.androidDetails.set(serial, { name: serial });
@@ -213,6 +215,7 @@ export class DeviceManager {
       ...cur.device,
       name: typeof info.DeviceName === 'string' ? info.DeviceName : cur.device.name,
       model: typeof info.ProductType === 'string' ? info.ProductType : cur.device.model,
+      marketingName: typeof info.ProductType === 'string' ? iosMarketingName(info.ProductType) : cur.device.marketingName,
       osVersion: typeof info.ProductVersion === 'string' ? `iOS ${info.ProductVersion}` : cur.device.osVersion,
       state,
       mirrorUnavailableReason: reasonFor(state) ?? (this.iosSupport.mirror ? undefined : IOS_PLATFORM_COMING),

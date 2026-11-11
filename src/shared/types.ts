@@ -18,7 +18,10 @@ export interface Device {
   /** adb serial or iOS UDID */
   serial: string;
   name: string;
+  /** Model code (SM-G990E, iPhone14,5). */
   model?: string;
+  /** Retail name when known (iOS: from the product type; Android names already use it). */
+  marketingName?: string;
   osVersion?: string;
   state: DeviceState;
   quality: Quality;

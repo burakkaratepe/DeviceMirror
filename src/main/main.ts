@@ -2,8 +2,9 @@ import { app, BrowserWindow, ipcMain, nativeImage } from 'electron';
 import path from 'node:path';
 import { findAdb } from './android/adb';
 import { DeviceManager } from './deviceManager';
-import { findIosHelper, iosSnapshot } from './ios/iosCapture';
+import { findIosHelper, iosSnapshot, shutdownIosHelpers } from './ios/iosCapture';
 import { MirrorManager } from './mirrorManager';
+import { loadAndroidModels } from './modelNames';
 import { Settings } from './settings';
 import type { DeviceSnapshot, MirrorResult, Preview, Quality } from '../shared/types';
 
@@ -133,6 +134,7 @@ app.whenReady().then(() => {
   splash = createSplash();
 
   const settings = new Settings(path.join(app.getPath('userData'), 'settings.json'));
+  loadAndroidModels(resource('android-models.tsv.gz'));
   const iosHelper = () => findIosHelper(app.isPackaged ? process.resourcesPath : undefined);
   manager = new DeviceManager(settings, () => findAdb(app.isPackaged ? process.resourcesPath : undefined), makePreview, {
     mirror: process.platform === 'darwin' && !!iosHelper(),
@@ -174,4 +176,5 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   mirrors?.closeAll();
   manager?.stop();
+  shutdownIosHelpers();
 });

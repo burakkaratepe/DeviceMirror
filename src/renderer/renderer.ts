@@ -50,7 +50,10 @@ function card(d: Device, index: number): HTMLElement {
 
   const body = el('div', 'card-body');
   body.append(el('h2', 'name', d.name));
-  const model = d.model && d.model !== d.name ? d.model : undefined;
+  // Second detail: the retail name when the title is a user-chosen device name
+  // (iOS), otherwise the model code (useful for testers).
+  const model = d.marketingName && d.marketingName !== d.name ? d.marketingName
+    : d.platform === 'android' && d.model && d.model !== d.name ? d.model : undefined;
   body.append(el('p', 'meta', [d.osVersion, model].filter(Boolean).join(' · ') || ' '));
   const hint = el('p', 'hint');
   if (d.state !== 'ready') hint.textContent = strings.state[d.state];

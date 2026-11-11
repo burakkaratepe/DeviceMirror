@@ -2,7 +2,7 @@
 
 Mirror and control Android and iOS devices from macOS, Windows and Linux.
 
-Status: **Phase 2** — live device list (Android + iOS) and Android mirroring with touch control: one window per device, up to 2 at a time, Low/Medium/High quality per device. iOS mirroring arrives in Phase 3 (macOS).
+Status: **Phase 3** — live device list (Android + iOS) with marketing names and screenshot previews; Android mirroring with touch + keyboard; iOS mirroring on macOS (view-only until Phase 4–5). One window per device, up to 2 at a time, Low/Medium/High quality per device.
 
 ## Development
 
@@ -10,6 +10,7 @@ Status: **Phase 2** — live device list (Android + iOS) and Android mirroring w
 npm install
 node scripts/fetch-scrcpy.mjs   # required: pinned scrcpy-server for Android mirroring
 ./scripts/build-ios-helper.sh   # macOS: builds the native iOS screen capture helper (needs Xcode)
+node scripts/build-model-names.mjs   # optional: refresh resources/android-models.tsv.gz
 node scripts/fetch-adb.mjs   # optional: bundle adb (otherwise a system/SDK adb is used)
 npm start                    # build and run the app
 npm test                     # unit tests

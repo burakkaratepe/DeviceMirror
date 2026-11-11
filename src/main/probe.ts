@@ -3,7 +3,10 @@
 
 import { findAdb } from './android/adb';
 import { DeviceManager } from './deviceManager';
+import { loadAndroidModels } from './modelNames';
 import { Settings } from './settings';
+
+loadAndroidModels('resources/android-models.tsv.gz');
 
 const seconds = Number(process.argv[2] ?? 8);
 // No image library here: report the screenshot size instead of encoding it.
@@ -12,7 +15,7 @@ const t0 = Date.now();
 manager.onSnapshot((s) => {
   const t = ((Date.now() - t0) / 1000).toFixed(2);
   console.log(`[${t}s] android=${s.services.android.ok ? 'ok' : s.services.android.message} ios=${s.services.ios.ok ? 'ok' : s.services.ios.message}`);
-  for (const d of s.devices) console.log(`   ${d.platform.padEnd(7)} ${d.state.padEnd(11)} ${d.name} | ${d.model ?? '-'} | ${d.osVersion ?? '-'} | ${d.serial}${d.preview ? ` | screenshot ${d.preview.width} bytes` : ''}${d.screenOff ? ' | screen off' : ''}`);
+  for (const d of s.devices) console.log(`   ${d.platform.padEnd(7)} ${d.state.padEnd(11)} ${d.name} | ${d.model ?? '-'}${d.marketingName ? ` (${d.marketingName})` : ''} | ${d.osVersion ?? '-'} | ${d.serial}${d.preview ? ` | screenshot ${d.preview.width} bytes` : ''}${d.screenOff ? ' | screen off' : ''}`);
   if (!s.devices.length) console.log('   (no devices)');
 });
 manager.start();

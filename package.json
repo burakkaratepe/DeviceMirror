@@ -23,21 +23,58 @@
   "build": {
     "appId": "com.devicemirror.app",
     "productName": "Device Mirror",
-    "directories": { "output": "release" },
+    "directories": {
+      "output": "release"
+    },
     "asar": true,
     "compression": "maximum",
-    "electronLanguages": ["en"],
-    "files": ["dist/**/*", "!dist/test/**", "!dist/probe.js", "!**/*.map", "package.json"],
+    "electronLanguages": [
+      "en"
+    ],
+    "files": [
+      "dist/**/*",
+      "!dist/test/**",
+      "!dist/probe.js",
+      "!**/*.map",
+      "package.json"
+    ],
     "extraResources": [
-      { "from": "resources/bin/${os}-${arch}", "to": "bin", "filter": ["**/*"] },
-      { "from": "resources/scrcpy-server", "to": "scrcpy-server" }
+      {
+        "from": "resources/bin/${os}-${arch}",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/scrcpy-server",
+        "to": "scrcpy-server"
+      },
+      {
+        "from": "resources/android-models.tsv.gz",
+        "to": "android-models.tsv.gz"
+      }
     ],
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "category": "public.app-category.developer-tools",
-      "extendInfo": { "NSCameraUsageDescription": "Device Mirror reads the screen of connected iPhones and iPads. macOS treats that screen as a camera." }
+      "extendInfo": {
+        "NSCameraUsageDescription": "Device Mirror reads the screen of connected iPhones and iPads. macOS treats that screen as a camera."
+      }
     },
-    "win": { "target": ["nsis"] },
-    "linux": { "target": ["AppImage", "deb"], "category": "Development" }
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    }
   }
 }
