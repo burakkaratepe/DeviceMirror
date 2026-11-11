@@ -4,3 +4,4 @@ release/
 resources/bin/
 resources/scrcpy-server
 .DS_Store
+.tmp/

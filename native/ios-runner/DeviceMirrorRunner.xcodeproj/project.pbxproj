@@ -1,0 +1,164 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		D1000000000000000000A001 /* DMRunnerTests.m in Sources */ = {isa = PBXBuildFile; fileRef = D1000000000000000000B001 /* DMRunnerTests.m */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		D1000000000000000000B001 /* DMRunnerTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DMRunnerTests.m; sourceTree = "<group>"; };
+		D1000000000000000000B002 /* XCTestPrivate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = XCTestPrivate.h; sourceTree = "<group>"; };
+		D1000000000000000000B003 /* DeviceMirrorRunner.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = DeviceMirrorRunner.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D1000000000000000000C001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		D1000000000000000000D001 = {
+			isa = PBXGroup;
+			children = (
+				D1000000000000000000D002 /* DMRunner */,
+				D1000000000000000000D003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D1000000000000000000D002 /* DMRunner */ = {
+			isa = PBXGroup;
+			children = (
+				D1000000000000000000B001 /* DMRunnerTests.m */,
+				D1000000000000000000B002 /* XCTestPrivate.h */,
+			);
+			path = DMRunner;
+			sourceTree = "<group>";
+		};
+		D1000000000000000000D003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D1000000000000000000B003 /* DeviceMirrorRunner.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		D1000000000000000000E001 /* DeviceMirrorRunner */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D1000000000000000000F002 /* Build configuration list for PBXNativeTarget "DeviceMirrorRunner" */;
+			buildPhases = (
+				D1000000000000000000C002 /* Sources */,
+				D1000000000000000000C001 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeviceMirrorRunner;
+			productName = DeviceMirrorRunner;
+			productReference = D1000000000000000000B003 /* DeviceMirrorRunner.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D1000000000000000000E002 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = D1000000000000000000F001 /* Build configuration list for PBXProject "DeviceMirrorRunner" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = D1000000000000000000D001;
+			productRefGroup = D1000000000000000000D003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				D1000000000000000000E001 /* DeviceMirrorRunner */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D1000000000000000000C002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D1000000000000000000A001 /* DMRunnerTests.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		D1000000000000000000F101 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				OTHER_LDFLAGS = (
+					"-framework",
+					UIKit,
+				);
+				GCC_OPTIMIZATION_LEVEL = s;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = NO;
+			};
+			name = Release;
+		};
+		D1000000000000000000F102 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Manual;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.devicemirror.runner;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TEST_TARGET_NAME = "";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D1000000000000000000F001 /* Build configuration list for PBXProject "DeviceMirrorRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1000000000000000000F101 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D1000000000000000000F002 /* Build configuration list for PBXNativeTarget "DeviceMirrorRunner" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D1000000000000000000F102 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = D1000000000000000000E002 /* Project object */;
+}
