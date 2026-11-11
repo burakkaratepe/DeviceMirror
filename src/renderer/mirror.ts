@@ -293,7 +293,7 @@ function layoutFrame() {
   // Rounded screen corners like the real panel; older home-button iPhones are square.
   const homeButtonIphone = platform === 'ios' && frameH / frameW < 1.9 && portrait;
   const radius = Math.min(vw, vh) * (platform === 'ios' ? (homeButtonIphone ? 0.015 : 0.12) : 0.075);
-  const border = Math.max(6, Math.min(vw, vh) * 0.035);
+  const border = Math.max(5, Math.min(vw, vh) * 0.028);
   const cl = left - (box.left - st.left), ct = top - (box.top - st.top);
   canvas.style.clipPath = `inset(${ct}px ${box.width - cl - vw}px ${box.height - ct - vh}px ${cl}px round ${radius}px)`;
   Object.assign(bezel.style, {
