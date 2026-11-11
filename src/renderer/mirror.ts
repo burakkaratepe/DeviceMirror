@@ -6,6 +6,7 @@ import { HidKeyboard } from './hidKeyboard';
 import { initTouchSetup } from './touchSetupUi';
 import { initIosTouch } from './iosTouchUi';
 import { initCaptures } from './captureUi';
+import { displaySize, frameToPortrait, orientationFor, placeKey, viewToFrame, type Orientation, type QuarterTurns } from './rotation';
 
 declare global {
   interface Window { mirror: MirrorWindowApi }
@@ -219,19 +220,23 @@ window.addEventListener('blur', () => keyboard.releaseAll());
 
 // ---- touch input -------------------------------------------------------
 
-/** Maps a pointer position to frame pixels (canvas uses object-fit: contain). */
+// ---- rotation & layout state ---------------------------------------------
+
+/** Quarter turns counter-clockwise the user applied with the rotate button. */
+let turns: QuarterTurns = 0;
+let orient: Orientation = orientationFor(0, 1, 2);
+/** The picture on screen, relative to the stage, and its scale (set by layoutFrame). */
+let view = { left: 0, top: 0, w: 0, h: 0, s: 1 };
+
+/** Maps a pointer position to frame pixels, whatever way the picture is turned. */
 function toFrame(e: { clientX: number; clientY: number }): { x: number; y: number; inside: boolean } | undefined {
-  if (!frameW || !frameH) return undefined;
-  const r = canvas.getBoundingClientRect();
-  const scale = Math.min(r.width / frameW, r.height / frameH);
-  const w = frameW * scale;
-  const h = frameH * scale;
-  const left = r.left + (r.width - w) / 2;
-  const top = r.top + (r.height - h) / 2;
-  const x = (e.clientX - left) / scale;
-  const y = (e.clientY - top) / scale;
-  const inside = x >= 0 && y >= 0 && x < frameW && y < frameH;
-  return { x: Math.max(0, Math.min(frameW - 1, x)), y: Math.max(0, Math.min(frameH - 1, y)), inside };
+  if (!frameW || !frameH || !view.w) return undefined;
+  const st = stage.getBoundingClientRect();
+  const px = e.clientX - st.left - view.left;
+  const py = e.clientY - st.top - view.top;
+  const inside = px >= 0 && py >= 0 && px < view.w && py < view.h;
+  const p = viewToFrame(px, py, view.s, orient.contentRot, frameW, frameH);
+  return { x: Math.max(0, Math.min(frameW - 1, p.x)), y: Math.max(0, Math.min(frameH - 1, p.y)), inside };
 }
 
 let activePointer: number | undefined;
@@ -293,13 +298,17 @@ canvas.addEventListener('wheel', (e) => {
   const p = toFrame(e);
   if (!p?.inside) return;
   const unit = e.deltaMode === 1 ? 1 : 1 / 40; // lines vs pixels → scroll "clicks"
-  api.scroll(p.x, p.y, -e.deltaX * unit, -e.deltaY * unit);
+  // Scroll along the picture as it is shown: turn the wheel vector with it.
+  const h = -e.deltaX * unit, v = -e.deltaY * unit;
+  const [fh, fv] = [[h, v], [-v, h], [-h, -v], [v, -h]][orient.contentRot];
+  api.scroll(p.x, p.y, fh, fv);
 }, { passive: false });
 
 // ---- iOS touch control -------------------------------------------------
 
 const stage = document.getElementById('stage') as HTMLDivElement;
-const iosTouch = initIosTouch({ ...api, notice: showToast }, canvas, stage, toFrame, () => ({ w: frameW, h: frameH }));
+const iosTouch = initIosTouch({ ...api, notice: showToast }, canvas, stage, toFrame, () => ({ w: frameW, h: frameH }),
+  (x, y) => frameToPortrait(x, y, orient.deviceRot), () => orient.keysShown);
 api.onTouch((on) => {
   iosTouch.setEnabled(on && platform === 'ios');
   document.body.classList.toggle('touch-on', on);
@@ -328,21 +337,33 @@ const BUTTON_LAYOUT: Record<'android' | 'ios', Record<string, { side: 'left' | '
   android: { volumeUp: { side: 'right', top: 0.19, height: 0.06 }, volumeDown: { side: 'right', top: 0.26, height: 0.06 }, power: { side: 'right', top: 0.36, height: 0.075 } },
 };
 
+/** Room around the picture for the frame and side keys; keep in sync with FRAME_PAD_X / FRAME_PAD_Y in mirrorManager.ts. */
+const PAD_X = 30, PAD_Y = 14;
+let lastDisplay = '';
+
 function layoutFrame() {
   if (!frameW || !frameH) { bezel.hidden = true; keys.hidden = true; fx.hidden = true; return; }
-  const box = canvas.getBoundingClientRect();
+  orient = orientationFor(turns, frameW, frameH);
+  const disp = displaySize(frameW, frameH, orient.contentRot);
+  // Tell the window its picture's shape so it can take that aspect ratio.
+  const shape = `${disp.w}x${disp.h}`;
+  if (shape !== lastDisplay) { lastDisplay = shape; api.displaySize(disp.w, disp.h); }
   const st = stage.getBoundingClientRect();
-  const scale = Math.min(box.width / frameW, box.height / frameH);
-  const vw = frameW * scale, vh = frameH * scale;
-  const left = box.left - st.left + (box.width - vw) / 2;
-  const top = box.top - st.top + (box.height - vh) / 2;
-  const portrait = vh >= vw;
+  const availW = Math.max(1, st.width - 2 * PAD_X), availH = Math.max(1, st.height - 2 * PAD_Y);
+  const s = Math.min(availW / disp.w, availH / disp.h);
+  const vw = disp.w * s, vh = disp.h * s;
+  const left = PAD_X + (availW - vw) / 2, top = PAD_Y + (availH - vh) / 2;
+  view = { left, top, w: vw, h: vh, s };
   // Rounded screen corners like the real panel; older home-button iPhones are square.
-  const homeButtonIphone = platform === 'ios' && frameH / frameW < 1.9 && portrait;
+  const homeButtonIphone = platform === 'ios' && Math.max(frameW, frameH) / Math.min(frameW, frameH) < 1.9;
   const radius = Math.min(vw, vh) * (platform === 'ios' ? (homeButtonIphone ? 0.015 : 0.12) : 0.075);
   const border = Math.max(5, Math.min(vw, vh) * 0.028);
-  const cl = left - (box.left - st.left), ct = top - (box.top - st.top);
-  canvas.style.clipPath = `inset(${ct}px ${box.width - cl - vw}px ${box.height - ct - vh}px ${cl}px round ${radius}px)`;
+  // The canvas keeps the frame's own shape and is turned around the centre.
+  const cw = frameW * s, ch = frameH * s;
+  Object.assign(canvas.style, {
+    left: `${left + vw / 2 - cw / 2}px`, top: `${top + vh / 2 - ch / 2}px`, width: `${cw}px`, height: `${ch}px`,
+    transform: orient.contentRot ? `rotate(${-90 * orient.contentRot}deg)` : '', borderRadius: `${radius}px`, clipPath: '',
+  });
   Object.assign(bezel.style, {
     left: `${left - border}px`, top: `${top - border}px`, width: `${vw + 2 * border}px`, height: `${vh + 2 * border}px`,
     borderRadius: `${radius + border}px`,
@@ -352,19 +373,50 @@ function layoutFrame() {
   Object.assign(fx.style, { left: `${left}px`, top: `${top}px`, width: `${vw}px`, height: `${vh}px`, borderRadius: `${radius}px` });
   fx.hidden = false;
   keys.hidden = false;
+  const bw = vw + 2 * border, bh = vh + 2 * border;
   const layout = BUTTON_LAYOUT[platform];
   for (const b of sideButtons) {
     const spec = layout[b.dataset.btn!];
-    b.hidden = !portrait; // the frame turns with the device; buttons are only placed for portrait
-    b.className = `side-btn ${spec.side}`;
-    b.style.top = `${spec.top * (vh + 2 * border)}px`;
-    b.style.height = `${spec.height * (vh + 2 * border)}px`;
+    b.hidden = !orient.keysShown;
+    const { edge, start } = placeKey(spec.side, spec.top, spec.height, turns);
+    // The keys' length runs along the body's long side, whichever way it lies.
+    const along = edge === 'left' || edge === 'right' ? bh : bw;
+    b.className = `side-btn ${edge}`;
+    b.style.top = edge === 'left' || edge === 'right' ? `${start * along}px` : '';
+    b.style.height = edge === 'left' || edge === 'right' ? `${spec.height * along}px` : '';
+    b.style.left = edge === 'top' || edge === 'bottom' ? `${start * along}px` : '';
+    b.style.width = edge === 'top' || edge === 'bottom' ? `${spec.height * along}px` : '';
     const locked = platform === 'ios' && !document.body.classList.contains('touch-on');
     b.classList.toggle('locked', locked);
     b.title = locked ? 'Enable touch control to use the buttons' : b.getAttribute('aria-label')!;
   }
 }
 new ResizeObserver(layoutFrame).observe(stage);
+
+// ---- rotate button ---------------------------------------------------------
+// Each press turns the phone a quarter turn counter-clockwise: the picture
+// swings round, the window takes the new shape, and the device is told so
+// apps that support the orientation redraw for it.
+const rotateBtn = document.getElementById('rotate') as HTMLButtonElement;
+let rotating = false;
+rotateBtn.addEventListener('click', () => {
+  if (rotating || !frameW) return;
+  rotating = true;
+  const st = stage.getBoundingClientRect();
+  // Shrink while turning so the sideways phone still fits until the window reshapes.
+  const fit = Math.min(1, (st.width - 2 * PAD_X) / view.h, (st.height - 2 * PAD_Y) / view.w);
+  stage.style.transformOrigin = `${view.left + view.w / 2}px ${view.top + view.h / 2}px`;
+  const anim = stage.animate([{ transform: 'rotate(0deg) scale(1)' }, { transform: `rotate(-90deg) scale(${fit})` }], { duration: 320, easing: 'cubic-bezier(.3,.7,.3,1)' });
+  const done = () => {
+    turns = ((turns + 1) % 4) as QuarterTurns;
+    api.rotate(turns);
+    layoutFrame();
+    anim.cancel();
+    rotating = false;
+  };
+  anim.onfinish = done;
+  anim.oncancel = () => { rotating = false; };
+});
 api.onVideo((v) => { if (v.type === 'size') requestAnimationFrame(layoutFrame); });
 api.onTouch(() => layoutFrame());
 

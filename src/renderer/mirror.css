@@ -12,7 +12,8 @@ body {
 #grab { position: fixed; left: 0; right: 0; top: 0; height: 14px; z-index: 5; -webkit-app-region: drag; }
 /* Room around the screen for the device frame and its side buttons; keep in
    sync with FRAME_PAD_X / FRAME_PAD_Y in mirrorManager.ts */
-#screen { position: absolute; left: 30px; top: 14px; width: calc(100% - 60px); height: calc(100% - 28px); object-fit: contain; cursor: pointer; touch-action: none; }
+/* Placed, sized and turned by layoutFrame() (mirror.ts) */
+#screen { position: absolute; left: 30px; top: 14px; transform-origin: 50% 50%; cursor: pointer; touch-action: none; }
 #overlay {
   position: absolute; inset: 14px 30px; border-radius: 28px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   background: rgba(11, 14, 20, 0.82); text-align: center; padding: 24px; transition: opacity 0.2s;
@@ -221,6 +222,13 @@ button.link:hover { text-decoration: underline; }
 .side-btn.right:hover { transform: translateX(-0.75px); filter: brightness(1.25); }
 .side-btn.left:active, .side-btn.left.pressed { transform: translateX(3.5px); transition-duration: 0.05s; filter: brightness(0.85); }
 .side-btn.right:active, .side-btn.right.pressed { transform: translateX(-3.5px); transition-duration: 0.05s; filter: brightness(0.85); }
+.side-btn.top { bottom: calc(100% - 1px); width: auto; height: 6px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #c3cad6 0%, #9aa1ad 45%, #6c737f 100%); }
+.side-btn.bottom { top: calc(100% - 1px); width: auto; height: 6px; border-radius: 0 0 4px 4px; background: linear-gradient(180deg, #6c737f 0%, #9aa1ad 55%, #c3cad6 100%); }
+.side-btn.top::after, .side-btn.bottom::after { inset: -6px -3px; }
+.side-btn.top:hover { transform: translateY(0.75px); filter: brightness(1.25); }
+.side-btn.bottom:hover { transform: translateY(-0.75px); filter: brightness(1.25); }
+.side-btn.top:active, .side-btn.top.pressed { transform: translateY(3.5px); transition-duration: 0.05s; filter: brightness(0.85); }
+.side-btn.bottom:active, .side-btn.bottom.pressed { transform: translateY(-3.5px); transition-duration: 0.05s; filter: brightness(0.85); }
 .side-btn.locked { opacity: 0.45; cursor: not-allowed; }
 .side-btn[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) { .side-btn { transition: none; } }

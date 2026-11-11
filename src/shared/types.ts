@@ -111,6 +111,10 @@ export interface MirrorWindowApi {
   recChunk(id: string, chunk: Uint8Array): void;
   recStop(id: string, durationMs: number, thumb?: Uint8Array): Promise<Capture | undefined>;
   showCaptures(): void;
+  /** Shape of the picture as shown (after turning), so the window can match it. */
+  displaySize(width: number, height: number): void;
+  /** The user turned the phone: quarter turns counter-clockwise from upright (0–3). */
+  rotate(turns: number): void;
   /** Disconnects touch control; the runner keeps running for a quick restart. */
   iosTouchOff(): void;
   notice?(text: string): void;

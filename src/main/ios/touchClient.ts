@@ -128,6 +128,13 @@ export class IosTouchClient {
 
   home() { return this.enqueue(4, 0, Buffer.alloc(0)); }
 
+  /** Device orientation for the user's quarter turns (0 upright, 1 landscape left, 2 upside down, 3 landscape right). */
+  orientation(turns: number) {
+    const p = Buffer.alloc(12);
+    p.writeFloatLE([1, 3, 2, 4][turns] ?? 1, 0); // UIDeviceOrientation values
+    return this.enqueue(8, 0, p);
+  }
+
   /** Wakes a sleeping screen with a keyboard key press (harmless when it is on). */
   wake() { return this.enqueue(7, 0, Buffer.alloc(0)); }
 

@@ -37,6 +37,8 @@ const api: MirrorWindowApi = {
   recChunk: (id, chunk) => ipcRenderer.send('capture:recChunk', id, chunk),
   recStop: (id, ms, poster) => ipcRenderer.invoke('capture:recStop', id, ms, poster),
   showCaptures: () => ipcRenderer.send('capture:show'),
+  displaySize: (w, h) => ipcRenderer.send('mirror:displaySize', w, h),
+  rotate: (turns) => ipcRenderer.send('mirror:rotate', turns),
 };
 
 contextBridge.exposeInMainWorld('mirror', api);

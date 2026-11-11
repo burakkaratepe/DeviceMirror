@@ -31,6 +31,10 @@ interface Entry {
   touchOff?: boolean;
   /** iOS: a wake-up of the sleeping screen is in progress. */
   waking?: boolean;
+  /** Quarter turns counter-clockwise the user applied with the rotate button. */
+  turns?: number;
+  /** Android: the rotation settings before we changed them, restored on close. */
+  savedRotation?: { accel: string; user: string };
   /** Last frame size, to keep the window's aspect ratio in step with rotation. */
   size?: { width: number; height: number };
   status: MirrorStatus;
@@ -127,6 +131,14 @@ export class MirrorManager {
       else if (action === 'minimize') win.minimize();
     });
     ipcMain.on('mirror:copy', (_e, text: unknown) => { if (typeof text === 'string' && text.length < 200) clipboard.writeText(text); });
+    ipcMain.on('mirror:displaySize', (e, w: unknown, h: unknown) => {
+      const entry = entryFor(e);
+      if (entry && typeof w === 'number' && typeof h === 'number' && w > 0 && h > 0) this.fitToFrame(entry, w, h);
+    });
+    ipcMain.on('mirror:rotate', (e, turns: unknown) => {
+      const entry = entryFor(e);
+      if (entry && Number.isInteger(turns) && (turns as number) >= 0 && (turns as number) < 4) void this.applyTurns(entry, turns as number);
+    });
     ipcMain.on('mirror:retry', (e) => {
       const entry = entryFor(e);
       if (entry) void this.startSession(entry);
@@ -161,6 +173,7 @@ export class MirrorManager {
       }
     };
     this.send(e, 'mirror:touch', true);
+    if (e.turns) void client.orientation(e.turns); // the phone was turned before touch came on
     // Touch just came on while the window waits for a sleeping screen: wake it now.
     if (e.status.state === 'waiting') void this.wakeIos(e);
   }
@@ -187,7 +200,7 @@ export class MirrorManager {
     const entry: Entry = { device, win: this.createWindow(device), status: { state: 'connecting' } };
     this.entries.set(device.id, entry);
     const wc = entry.win.webContents;
-    entry.win.on('close', () => this.onWindowClosed?.(wc));
+    entry.win.on('close', () => { this.onWindowClosed?.(wc); void this.applyTurns(entry, 0); });
     entry.win.on('closed', () => {
       entry.session?.close();
       entry.touch?.close();
@@ -207,6 +220,7 @@ export class MirrorManager {
   close(id: string) {
     const e = this.entries.get(id);
     if (!e) return;
+    void this.applyTurns(e, 0); // put the device's rotation back
     this.entries.delete(id);
     e.session?.close();
     e.touch?.close();
@@ -251,6 +265,36 @@ export class MirrorManager {
   private setStatus(e: Entry, s: MirrorStatus) {
     e.status = s;
     this.send(e, 'mirror:status', s);
+  }
+
+  /**
+   * Tells the device how the user turned it. Android: rotation locked to the
+   * new orientation (apps that allow it redraw; the original auto-rotate
+   * settings come back when turned upright again or the window closes).
+   * iOS: the runner sets the device orientation (needs touch control).
+   */
+  private async applyTurns(e: Entry, turns: number) {
+    if ((e.turns ?? 0) === turns && !(turns === 0 && e.savedRotation)) return;
+    e.turns = turns;
+    const serial = e.device.serial;
+    if (e.device.platform === 'ios') { await e.touch?.orientation(turns); return; }
+    try {
+      if (turns === 0) {
+        const saved = e.savedRotation;
+        e.savedRotation = undefined;
+        if (saved) await shell(serial, `settings put system user_rotation ${saved.user} && settings put system accelerometer_rotation ${saved.accel}`);
+        return;
+      }
+      if (!e.savedRotation) {
+        const [accel, user] = (await shell(serial, 'settings get system accelerometer_rotation; settings get system user_rotation')).trim().split(/\s+/);
+        e.savedRotation = { accel: /^\d+$/.test(accel ?? '') ? accel : '1', user: /^\d+$/.test(user ?? '') ? user : '0' };
+      }
+      // Surface rotation N: the picture is drawn N quarter turns clockwise,
+      // which is a phone turned N quarter turns counter-clockwise.
+      await shell(serial, `settings put system accelerometer_rotation 0 && settings put system user_rotation ${turns}`);
+    } catch {
+      // device gone: nothing to restore
+    }
   }
 
   /**
@@ -301,7 +345,6 @@ export class MirrorManager {
     const events: SessionEvents = {
       onVideo: (v) => {
         if (e.session !== session) return;
-        if (v.type === 'size') this.fitToFrame(e, v.width, v.height);
         if (v.type === 'packet' && firstFrame) { firstFrame = false; this.setStatus(e, { state: 'live' }); }
         this.send(e, 'mirror:video', v); // Buffers arrive in the renderer as Uint8Array (MirrorVideo)
       },
@@ -392,14 +435,28 @@ export class MirrorManager {
     e.size = { width, height };
     e.win.setAspectRatio(width / height, { width: FRAME_PAD_X + TOOLBAR_WIDTH, height: FRAME_PAD_Y });
     if (!rotated || e.win.isMaximized() || e.win.isFullScreen()) return;
-    const [, curH] = e.win.getContentSize();
-    const work = screen.getDisplayMatching(e.win.getBounds()).workAreaSize;
+    const [curW, curH] = e.win.getContentSize();
+    const bounds = e.win.getBounds();
+    const workArea = screen.getDisplayMatching(bounds).workArea;
+    const work = { width: workArea.width, height: workArea.height };
     const extraH = FRAME_PAD_Y;
     const extraW = FRAME_PAD_X + TOOLBAR_WIDTH;
-    let videoH = Math.min(curH - extraH, work.height - 60 - extraH);
+    // First frame: keep the window's height. Turned: keep the phone's size
+    // (its long side stays as long), so it looks like the same phone turned.
+    let videoH = first ? Math.min(curH - extraH, work.height - 60 - extraH) : Math.round(Math.max(curW - extraW, curH - extraH) * (width > height ? height / width : 1));
     let videoW = Math.round((videoH * width) / height);
+    if (videoH > work.height - 60 - extraH) { videoH = work.height - 60 - extraH; videoW = Math.round((videoH * width) / height); }
     if (videoW > work.width - 40 - extraW) { videoW = work.width - 40 - extraW; videoH = Math.round((videoW * height) / width); }
-    e.win.setContentSize(Math.max(videoW + extraW, 240), videoH + extraH);
+    const newW = Math.max(videoW + extraW, 240), newH = videoH + extraH;
+    if (first) { e.win.setContentSize(newW, newH); }
+    else {
+      // Turn around the window's centre, kept on screen.
+      const cx = bounds.x + bounds.width / 2, cy = bounds.y + bounds.height / 2;
+      const outW = newW + (bounds.width - curW), outH = newH + (bounds.height - curH);
+      const x = Math.round(Math.min(Math.max(workArea.x, cx - outW / 2), workArea.x + workArea.width - outW));
+      const y = Math.round(Math.min(Math.max(workArea.y, cy - outH / 2), workArea.y + workArea.height - outH));
+      e.win.setBounds({ x, y, width: outW, height: outH });
+    }
     // The real size is known now; keep the window clear of the other one.
     if (first) this.placeBesideOthers(e.win);
   }

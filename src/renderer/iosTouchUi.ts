@@ -23,6 +23,10 @@ export function initIosTouch(
   stage: HTMLElement,
   toFrame: (e: { clientX: number; clientY: number }) => FramePoint | undefined,
   frameSize: () => { w: number; h: number },
+  /** Frame-normalized point → the panel's portrait coordinates (the phone may be turned). */
+  toPanel: (x: number, y: number) => { x: number; y: number },
+  /** False while the way the device turned its picture is unknown. */
+  canTouch: () => boolean,
 ) {
   let enabled = false;
   let points: { x: number; y: number; t: number }[] = [];
@@ -31,7 +35,7 @@ export function initIosTouch(
   let lastMove = 0;
 
   const norm = (p: FramePoint) => { const { w, h } = frameSize(); return { x: p.x / w, y: p.y / h }; };
-  const portrait = () => { const { w, h } = frameSize(); return h >= w; };
+  const panel = <T extends { x: number; y: number }>(q: T): T => ({ ...q, ...toPanel(q.x, q.y) });
 
   function ripple(clientX: number, clientY: number, long = false) {
     const r = document.createElement('span');
@@ -101,7 +105,7 @@ export function initIosTouch(
     if (!enabled || e.button !== 0 || pointerId !== undefined) return;
     const p = toFrame(e);
     if (!p?.inside) return;
-    if (!portrait()) { api.notice?.('Touch control works in portrait for now.'); return; }
+    if (!canTouch()) { api.notice?.('Touch is not available while this app shows landscape with the phone upright. Use the rotate button to turn the phone.'); return; }
     pointerId = e.pointerId;
     canvas.setPointerCapture(e.pointerId);
     startTime = performance.now();
@@ -137,10 +141,11 @@ export function initIosTouch(
       trail?.svg.remove();
       trail = undefined;
       if (held >= LONG_PRESS_MS) ripple(e.clientX, e.clientY, true);
-      api.iosTap(first.x, first.y, held >= LONG_PRESS_MS ? held / 1000 : 0.03);
+      const at = panel(first);
+      api.iosTap(at.x, at.y, held >= LONG_PRESS_MS ? held / 1000 : 0.03);
     } else {
       extendTrail(e, (now - startTime) / 1000);
-      api.iosGesture(points.map((q) => ({ ...q, t: q.t / SWIPE_SPEEDUP })));
+      api.iosGesture(points.map((q) => panel({ ...q, t: q.t / SWIPE_SPEEDUP })));
       replayTrail();
     }
     points = [];
@@ -164,7 +169,7 @@ export function initIosTouch(
       const start = norm(wheelAt!);
       const dist = Math.max(-0.45, Math.min(0.45, -wheelY / 1200));
       const endY = Math.max(0.02, Math.min(0.98, start.y + dist));
-      if (Math.abs(endY - start.y) > 0.02) api.iosGesture([{ ...start, t: 0 }, { x: start.x, y: (start.y + endY) / 2, t: 0.08 }, { x: start.x, y: endY, t: 0.16 }]);
+      if (Math.abs(endY - start.y) > 0.02) api.iosGesture([{ ...start, t: 0 }, { x: start.x, y: (start.y + endY) / 2, t: 0.08 }, { x: start.x, y: endY, t: 0.16 }].map(panel));
       wheelY = 0;
       wheelAt = undefined;
     }, 120);
