@@ -6,6 +6,7 @@ import { findIosHelper, iosSnapshot, shutdownIosHelpers } from './ios/iosCapture
 import { IosRunnerManager } from './ios/runner';
 import { registerTouchSetup, SigningStore } from './ios/touchSetup';
 import { IosTouchClient } from './ios/touchClient';
+import { CaptureStore, registerCaptureIpc, registerCaptureScheme } from './captures';
 import { MirrorManager } from './mirrorManager';
 import { loadAndroidModels } from './modelNames';
 import { Settings } from './settings';
@@ -146,6 +147,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
+registerCaptureScheme();
+
 app.whenReady().then(() => {
   splash = createSplash();
 
@@ -175,6 +178,22 @@ app.whenReady().then(() => {
     windowFor: (wc) => mirrors!.windowFor(wc),
     onRunnerReady: (deviceId, udid) => mirrors!.attachTouch(deviceId, udid),
     runnerAnswers: (udid) => IosTouchClient.probe(udid),
+  });
+
+  const captures = new CaptureStore(path.join(app.getPath('userData'), 'Captures'));
+  captures.serve();
+  captures.onChange(() => win?.webContents.send('captures:changed'));
+  mirrors.onWindowClosed = (wc) => captures.finishAllFor(wc);
+  registerCaptureIpc(captures, {
+    deviceFor: (wc) => mirrors!.deviceFor(wc),
+    mainWindow: () => win,
+    showCaptures: () => {
+      if (!win) createWindow(false);
+      if (win!.isMinimized()) win!.restore();
+      win!.show();
+      win!.focus();
+      win!.webContents.send('captures:show');
+    },
   });
 
   manager.onSnapshot((s) => {

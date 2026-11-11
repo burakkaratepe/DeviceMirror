@@ -5,6 +5,7 @@ import type { MirrorStatus, MirrorVideo, MirrorWindowApi, Quality } from '../sha
 import { HidKeyboard } from './hidKeyboard';
 import { initTouchSetup } from './touchSetupUi';
 import { initIosTouch } from './iosTouchUi';
+import { initCaptures } from './captureUi';
 
 declare global {
   interface Window { mirror: MirrorWindowApi }
@@ -309,6 +310,12 @@ api.onTouch((on) => {
 
 const bezel = document.getElementById('bezel') as HTMLDivElement;
 const keys = document.getElementById('keys') as HTMLDivElement;
+const fx = document.getElementById('fx') as HTMLDivElement;
+initCaptures({
+  api, canvas, fx, notify: showToast, isLive: () => isLive,
+  shotButton: document.getElementById('shot') as HTMLButtonElement,
+  recButton: document.getElementById('rec') as HTMLButtonElement,
+});
 const sideButtons = [...keys.querySelectorAll<HTMLButtonElement>('.side-btn')];
 
 /** Button placement per platform, as fractions of the frame height. */
@@ -318,7 +325,7 @@ const BUTTON_LAYOUT: Record<'android' | 'ios', Record<string, { side: 'left' | '
 };
 
 function layoutFrame() {
-  if (!frameW || !frameH) { bezel.hidden = true; keys.hidden = true; return; }
+  if (!frameW || !frameH) { bezel.hidden = true; keys.hidden = true; fx.hidden = true; return; }
   const box = canvas.getBoundingClientRect();
   const st = stage.getBoundingClientRect();
   const scale = Math.min(box.width / frameW, box.height / frameH);
@@ -338,6 +345,8 @@ function layoutFrame() {
   });
   bezel.hidden = false;
   Object.assign(keys.style, { left: bezel.style.left, top: bezel.style.top, width: bezel.style.width, height: bezel.style.height });
+  Object.assign(fx.style, { left: `${left}px`, top: `${top}px`, width: `${vw}px`, height: `${vh}px`, borderRadius: `${radius}px` });
+  fx.hidden = false;
   keys.hidden = false;
   const layout = BUTTON_LAYOUT[platform];
   for (const b of sideButtons) {

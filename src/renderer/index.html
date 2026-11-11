@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: dm-capture:; media-src dm-capture:" />
     <title>Device Mirror</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -16,10 +16,16 @@
         <span>Device<b>Mirror</b></span>
       </div>
       <nav>
-        <a class="nav-item active" aria-current="page">
+        <button type="button" class="nav-item active" data-view="devices" aria-current="page">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.6" /><line x1="11" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
           Devices
-        </a>
+        </button>
+        <button type="button" class="nav-item" data-view="captures">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6" /><circle cx="9" cy="10" r="1.6" fill="currentColor" /><path d="m4.5 17 4.8-4.6 3.2 3 2.6-2.4 4.4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" /></svg>
+          Captures
+          <span id="nav-cap-flash" class="nav-flash" aria-hidden="true"></span>
+          <span id="nav-cap-count" class="nav-count"></span>
+        </button>
       </nav>
       <div class="sidebar-footer">
         <div class="service" id="svc-android"><span class="svc-dot"></span><span class="svc-label">Android</span><span class="svc-detail"></span></div>
@@ -27,6 +33,7 @@
       </div>
     </aside>
     <main>
+      <div id="view-devices">
       <header class="page-head">
         <h1>Devices <span id="count" class="count"></span></h1>
         <p class="subtitle">Phones and tablets connected to this computer over USB. Pick one to mirror its screen.</p>
@@ -42,7 +49,48 @@
         <p class="empty-title">No devices connected</p>
         <p class="empty-text">Connect an Android or iOS device with a USB cable. It shows up here automatically.</p>
       </div>
+      </div>
+      <div id="view-captures" hidden>
+        <header class="page-head with-action">
+          <div>
+            <h1>Captures <span id="cap-count" class="count"></span></h1>
+            <p class="subtitle">Screenshots and screen recordings taken from mirror windows.</p>
+          </div>
+          <button id="cap-clear" type="button" class="btn-danger-outline" hidden>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Delete All Captures
+          </button>
+        </header>
+        <div id="cap-chips" class="chips" role="group" aria-label="Filter by type"></div>
+        <div id="cap-device-chips" class="chips" role="group" aria-label="Filter by device" hidden></div>
+        <section id="cap-grid" class="cap-grid" aria-label="Captures"></section>
+        <div id="cap-empty" class="empty" hidden>
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <rect x="22" y="30" width="76" height="60" rx="10" fill="none" stroke="currentColor" stroke-width="3" />
+            <circle cx="60" cy="60" r="14" fill="none" stroke="currentColor" stroke-width="3" />
+            <path d="M44 30l5-8h22l5 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round" />
+          </svg>
+          <p id="cap-empty-title" class="empty-title">Nothing captured yet</p>
+          <p class="empty-text">Use the camera or record button in a mirror window. Screenshots and recordings show up here.</p>
+        </div>
+      </div>
     </main>
+    <dialog id="cap-clear-dialog" aria-labelledby="cap-clear-title">
+      <h2 id="cap-clear-title">Delete all captures?</h2>
+      <p id="cap-clear-text"></p>
+      <div class="dialog-actions">
+        <button id="cap-clear-cancel" type="button" class="btn-secondary">Cancel</button>
+        <button id="cap-clear-confirm" type="button" class="btn-danger">Delete All</button>
+      </div>
+    </dialog>
+    <dialog id="cap-viewer" class="cap-viewer" aria-labelledby="cap-viewer-title">
+      <header>
+        <div><h2 id="cap-viewer-title"></h2><p id="cap-viewer-meta"></p></div>
+        <button id="cap-viewer-download" type="button" class="btn-secondary">Download</button>
+        <button id="cap-viewer-close" type="button" class="btn-secondary" aria-label="Close">Close</button>
+      </header>
+      <div id="cap-viewer-body"></div>
+    </dialog>
     <dialog id="limit-dialog" aria-labelledby="limit-title">
       <h2 id="limit-title">You can mirror up to 2 devices at a time</h2>
       <p>Stop one of the running mirrors to continue.</p>

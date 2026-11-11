@@ -104,6 +104,11 @@ export interface MirrorWindowApi {
   iosText(text: string): void;
   iosHome(): void;
   iosButton(which: 'volumeUp' | 'volumeDown' | 'lock'): void;
+  saveScreenshot(image: Uint8Array, ext: 'webp' | 'png', thumb: Uint8Array | undefined, width: number, height: number): Promise<Capture | undefined>;
+  recStart(mime: string, width: number, height: number): Promise<string | undefined>;
+  recChunk(id: string, chunk: Uint8Array): void;
+  recStop(id: string, durationMs: number, thumb?: Uint8Array): Promise<Capture | undefined>;
+  showCaptures(): void;
   /** Disconnects touch control; the runner keeps running for a quick restart. */
   iosTouchOff(): void;
   notice?(text: string): void;
@@ -127,10 +132,39 @@ export interface DeviceSnapshot {
   services: { android: ServiceStatus; ios: ServiceStatus };
 }
 
+export type CaptureKind = 'screenshot' | 'video';
+
+/** A screenshot or screen recording saved from a mirror window. */
+export interface Capture {
+  id: string;
+  kind: CaptureKind;
+  /** File name in the captures folder (served as dm-capture://files/<file>). */
+  file: string;
+  thumb?: string;
+  /** Device the capture came from: Device.id ("ios:<UDID>" / "android:<serial>") and its UDID / serial. */
+  deviceId: string;
+  serial: string;
+  deviceName: string;
+  platform: 'android' | 'ios';
+  width: number;
+  height: number;
+  size: number;
+  durationMs?: number;
+  createdAt: string;
+}
+
 export interface DeviceMirrorApi {
   getSnapshot(): Promise<DeviceSnapshot>;
   onSnapshot(cb: (s: DeviceSnapshot) => void): () => void;
   setQuality(deviceId: string, quality: Quality): Promise<void>;
   /** Opens (or focuses) a mirror window; `replaceId` closes that mirror first. */
   mirror(deviceId: string, replaceId?: string): Promise<MirrorResult>;
+  listCaptures(): Promise<Capture[]>;
+  onCapturesChanged(cb: () => void): void;
+  /** Saves a copy where the user picks; false when cancelled. */
+  downloadCapture(id: string): Promise<boolean>;
+  deleteCapture(id: string): Promise<void>;
+  deleteAllCaptures(): Promise<void>;
+  /** A mirror window asked to show the captures (e.g. its screenshot thumbnail was clicked). */
+  onShowCaptures(cb: () => void): void;
 }

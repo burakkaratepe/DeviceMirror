@@ -32,6 +32,11 @@ const api: MirrorWindowApi = {
   iosHome: () => ipcRenderer.send('ios:home'),
   iosButton: (which) => ipcRenderer.send('ios:button', which),
   iosTouchOff: () => ipcRenderer.send('ios:touchOff'),
+  saveScreenshot: (image, ext, thumb, w, h) => ipcRenderer.invoke('capture:screenshot', image, ext, thumb, w, h),
+  recStart: (mime, w, h) => ipcRenderer.invoke('capture:recStart', mime, w, h),
+  recChunk: (id, chunk) => ipcRenderer.send('capture:recChunk', id, chunk),
+  recStop: (id, ms, poster) => ipcRenderer.invoke('capture:recStop', id, ms, poster),
+  showCaptures: () => ipcRenderer.send('capture:show'),
 };
 
 contextBridge.exposeInMainWorld('mirror', api);

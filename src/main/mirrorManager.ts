@@ -45,6 +45,8 @@ export interface MirrorDeps {
 
 export class MirrorManager {
   private entries = new Map<string, Entry>();
+  /** Called with a mirror window's webContents just before it goes away. */
+  onWindowClosed?: (wc: WebContents) => void;
 
   constructor(private deps: MirrorDeps) {
     const entryFor = (e: IpcMainEvent) => [...this.entries.values()].find((x) => x.win.webContents === e.sender);
@@ -179,6 +181,8 @@ export class MirrorManager {
 
     const entry: Entry = { device, win: this.createWindow(device), status: { state: 'connecting' } };
     this.entries.set(device.id, entry);
+    const wc = entry.win.webContents;
+    entry.win.on('close', () => this.onWindowClosed?.(wc));
     entry.win.on('closed', () => {
       entry.session?.close();
       entry.touch?.close();

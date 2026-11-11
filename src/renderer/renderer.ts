@@ -2,12 +2,14 @@ import type { Device, DeviceMirrorApi, DeviceSnapshot, ServiceStatus } from '../
 import { mockupSvg } from './mockups';
 import { focusOpenMenu, installOutsideClose, qualityPicker, type PickerHooks, type PickerState } from './qualityPicker';
 import { strings } from './strings';
+import { initCapturesView } from './capturesView';
 
 declare global {
   interface Window { deviceMirror: DeviceMirrorApi }
 }
 
 const api = window.deviceMirror;
+const capturesView = initCapturesView(api, (t) => showToast(t));
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const grid = $<HTMLElement>('grid');
 const empty = $<HTMLDivElement>('empty');
@@ -49,6 +51,16 @@ function card(d: Device, index: number): HTMLElement {
   const badge = el('span', `platform-badge ${d.platform}`, strings.platform[d.platform]);
   preview.append(badge);
   if (d.screenOff) preview.append(el('span', 'screen-off', strings.screenOff));
+  const shots = capturesView.countFor(d.id);
+  if (shots) {
+    const link = el('button', 'captures-link');
+    link.type = 'button';
+    link.title = `Screenshots and recordings from ${d.name}`;
+    link.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8" /><circle cx="9" cy="10" r="1.6" fill="currentColor" /><path d="m4.5 17 4.8-4.6 3.2 3 2.6-2.4 4.4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" /></svg>';
+    link.append(document.createTextNode(String(shots)));
+    link.addEventListener('click', () => { capturesView.showDevice(d.id); showView('captures'); });
+    preview.append(link);
+  }
 
   const body = el('div', 'card-body');
   body.append(el('h2', 'name', d.name));
@@ -141,6 +153,23 @@ function render(s: DeviceSnapshot) {
     notices.append(n);
   }
 }
+
+// ---- pages ---------------------------------------------------------------
+
+function showView(view: 'devices' | 'captures') {
+  $<HTMLDivElement>('view-devices').hidden = view !== 'devices';
+  $<HTMLDivElement>('view-captures').hidden = view !== 'captures';
+  for (const b of document.querySelectorAll<HTMLButtonElement>('.nav-item')) {
+    const on = b.dataset.view === view;
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
+  }
+}
+for (const b of document.querySelectorAll<HTMLButtonElement>('.nav-item')) {
+  b.addEventListener('click', () => showView(b.dataset.view as 'devices' | 'captures'));
+}
+api.onShowCaptures(() => showView('captures'));
+capturesView.onChange(() => render(last));
 
 installOutsideClose(picker, () => render(last));
 api.onSnapshot(render);
