@@ -50,6 +50,8 @@ function paint() {
   }
   ctx.drawImage(f, 0, 0);
   f.close();
+  // Until the first frame the canvas is an empty 300x150 box: keep it hidden.
+  if (!canvas.classList.contains('has-frame')) { canvas.classList.add('has-frame'); onFirstFrame(); }
 }
 
 function onFrame(f: VideoFrame) {
@@ -108,7 +110,38 @@ api.onStatus((s) => {
   showStatus(s);
   isLive = s.state === 'live';
   maybeInvite();
+  if (isLive) watchForDarkScreen();
 });
+
+// ---- iOS screen off ------------------------------------------------------
+// An iPhone sends no picture at all while its display is off, so the window
+// would wait forever. When the stream is up but no frame arrives, wake the
+// screen through the touch runner if it is connected, otherwise say what to do.
+const DARK_AFTER_MS = 2500;
+let darkTimer: number | undefined;
+let wokeOnce = false;
+const hasFrame = () => canvas.classList.contains('has-frame');
+function watchForDarkScreen() {
+  clearTimeout(darkTimer);
+  if (platform !== 'ios' || hasFrame()) return;
+  darkTimer = window.setTimeout(() => {
+    if (!isLive || hasFrame()) return;
+    if (document.body.classList.contains('touch-on') && !wokeOnce) {
+      wokeOnce = true;
+      api.iosButton('lock'); // the side button wakes a sleeping screen
+      overlayText.textContent = `Waking ${deviceName}…`;
+      overlay.classList.remove('hidden');
+    } else {
+      overlayText.textContent = `The screen of ${deviceName} is off. Press its side button to wake it${document.body.classList.contains('touch-on') ? '.' : ', or turn on touch control to wake it from here.'}`;
+      overlay.classList.remove('hidden');
+    }
+  }, DARK_AFTER_MS);
+}
+/** First picture after a dark start: drop the hint. */
+function onFirstFrame() {
+  clearTimeout(darkTimer);
+  if (isLive) overlay.classList.add('hidden');
+}
 retryBtn.addEventListener('click', () => api.retry());
 
 // ---- quality -----------------------------------------------------------
@@ -300,6 +333,7 @@ api.onTouch((on) => {
   iosTouch.setEnabled(on && platform === 'ios');
   document.body.classList.toggle('touch-on', on);
   touchSetup.setTouch(on);
+  if (on && isLive && !hasFrame()) watchForDarkScreen(); // still dark: the runner can wake it now
   if (on) (document.getElementById('invite') as HTMLDivElement).hidden = true;
 });
 

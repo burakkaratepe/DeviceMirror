@@ -62,6 +62,26 @@ static void onMain(dispatch_block_t block) {
   else dispatch_sync(dispatch_get_main_queue(), block);
 }
 
+/// Presses a hardware key as a HID event (usage page / usage), like a real
+/// key press. XCUIDevice's volume buttons are logged as pressed but change
+/// nothing on recent iOS versions; the HID route works. Private API, looked
+/// up at run time.
+static BOOL pressHID(uint32_t page, uint32_t usage, double seconds) {
+  Class eventClass = NSClassFromString(@"XCDeviceEvent");
+  SEL make = NSSelectorFromString(@"deviceEventWithPage:usage:duration:");
+  SEL perform = NSSelectorFromString(@"performDeviceEvent:error:");
+  XCUIDevice *device = XCUIDevice.sharedDevice;
+  if (!eventClass || ![eventClass respondsToSelector:make] || ![device respondsToSelector:perform]) return NO;
+  id event = ((id (*)(id, SEL, uint32_t, uint32_t, double))[eventClass methodForSelector:make])(eventClass, make, page, usage, seconds);
+  __block BOOL ok = NO;
+  onMain(^{
+    NSError *error = nil;
+    ok = ((BOOL (*)(id, SEL, id, NSError **))[device methodForSelector:perform])(device, perform, event, &error);
+    if (!ok) NSLog(@"[DMRunner] HID %x/%x failed: %@", page, usage, error);
+  });
+  return ok;
+}
+
 #pragma mark - Event synthesis
 
 // Private classes are looked up at run time: they have moved between XCTest
@@ -224,10 +244,14 @@ static BOOL synthesize(XCPointerEventPath *path) {
         NSLog(@"[DMRunner] lock button done");
         return YES;
       }
+      // Volume: consumer page 0x0C, usage 0xE9 up / 0xEA down.
+      if (button == 2 || button == 3) {
+        if (pressHID(0x0C, button == 2 ? 0xE9 : 0xEA, 0.05)) return YES;
 #if !TARGET_OS_SIMULATOR
-      if (button == 2) { onMain(^{ [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeUp]; }); return YES; }
-      if (button == 3) { onMain(^{ [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeDown]; }); return YES; }
+        onMain(^{ [XCUIDevice.sharedDevice pressButton:button == 2 ? XCUIDeviceButtonVolumeUp : XCUIDeviceButtonVolumeDown]; });
+        return YES;
 #endif
+      }
       return NO;
     }
     default: // ping

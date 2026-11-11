@@ -236,22 +236,28 @@ export class AndroidMirrorSession {
   }
 
   /** action: 0 down, 1 up, 2 move. x/y in video frame pixels. */
-  /** action: 0 down, 1 up, 2 move (finger); 7 hover move, 9 hover enter, 10 hover exit (mouse). */
+  /**
+   * Mouse input, the way scrcpy sends it: every event comes from the mouse
+   * pointer (POINTER_ID_MOUSE) with the primary button state, so presses,
+   * drags and hover belong to one device. (Mixing hover from the mouse with
+   * presses from a "finger" made some devices ignore the presses.)
+   * action: 0 down, 1 up, 2 move, 7 hover move, 9 hover enter, 10 hover exit.
+   */
   touch(action: 0 | 1 | 2 | 7 | 9 | 10, x: number, y: number) {
     if (!this.width || !this.height) return;
     const hover = action >= 7;
+    const PRIMARY = 1; // AMOTION_EVENT_BUTTON_PRIMARY
     const b = Buffer.alloc(32);
     b[0] = 2; // INJECT_TOUCH_EVENT
     b[1] = action;
-    // Hover comes from the mouse (as in scrcpy), presses from a finger.
-    b.writeBigUInt64BE(hover ? 0xffffffffffffffffn : 0xfffffffffffffffen, 2); // POINTER_ID_MOUSE / POINTER_ID_GENERIC_FINGER
+    b.writeBigUInt64BE(0xffffffffffffffffn, 2); // POINTER_ID_MOUSE
     b.writeInt32BE(Math.round(x), 10);
     b.writeInt32BE(Math.round(y), 14);
     b.writeUInt16BE(this.width, 18);
     b.writeUInt16BE(this.height, 20);
     b.writeUInt16BE(action === 1 || hover ? 0 : 0xffff, 22); // pressure
-    b.writeUInt32BE(0, 24); // action button
-    b.writeUInt32BE(0, 28); // buttons
+    b.writeUInt32BE(action === 0 || action === 1 ? PRIMARY : 0, 24); // action button
+    b.writeUInt32BE(action === 0 || action === 2 ? PRIMARY : 0, 28); // buttons held
     this.send(b);
   }
 

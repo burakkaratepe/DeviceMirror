@@ -11,6 +11,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, type WebContents } from 'electron';
 import type { Capture, CaptureKind } from '../shared/types';
+import { fixFragmentedMp4Duration } from './mp4Duration';
 
 export const CAPTURE_SCHEME = 'dm-capture';
 
@@ -95,12 +96,15 @@ export class CaptureStore {
     this.recordings.delete(id);
     await new Promise<void>((r) => rec.out.end(r));
     const full = path.join(this.dir, rec.file);
+    if (statSync(full).size === 0) { rmSync(full, { force: true }); return undefined; }
+    // Fill in the total length so players show a steady seek bar.
+    let fileDuration: number | undefined;
+    if (rec.file.endsWith('.mp4')) fileDuration = await fixFragmentedMp4Duration(full).catch(() => undefined);
     const size = statSync(full).size;
-    if (size === 0) { rmSync(full, { force: true }); return undefined; }
     const item: Capture = {
       id, kind: 'video', file: rec.file, thumb: this.writeThumb(id, thumb),
       deviceId: rec.meta.deviceId, serial: rec.meta.serial, deviceName: rec.meta.deviceName, platform: rec.meta.platform, width: rec.meta.width, height: rec.meta.height,
-      size, durationMs: durationMs ?? Date.now() - rec.started, createdAt: new Date(rec.started).toISOString(),
+      size, durationMs: fileDuration ?? durationMs ?? Date.now() - rec.started, createdAt: new Date(rec.started).toISOString(),
     };
     this.items.push(item);
     this.changed();
