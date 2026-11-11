@@ -8,11 +8,12 @@ import { connectToDevice, usbDeviceId } from './usbmux';
 export const RUNNER_PORT = 47310;
 
 /** Protocol version this app speaks (DMRunnerTests.m kProtocolVersion). */
-export const RUNNER_PROTOCOL = 2;
+export const RUNNER_PROTOCOL = 3;
 export class OutdatedRunnerError extends Error {}
 
 export interface Hello { width: number; height: number; scale: number; version: number }
-interface Pending { frame: Buffer; resolve: (ok: boolean) => void }
+/** resolve gets the ack's result byte: 1 ok, 0 failed (op 9: the orientation). */
+interface Pending { frame: Buffer; resolve: (result: number) => void }
 
 export class IosTouchClient {
   private sock: net.Socket | undefined;
@@ -82,13 +83,13 @@ export class IosTouchClient {
 
   private readAcks() {
     while (this.hello && this.buf.length >= 12) {
-      const ok = this.buf[1] === 1;
+      const result = this.buf[1];
       const seq = this.buf.readUInt32LE(4);
       this.buf = this.buf.subarray(12);
       if (this.inflight?.seq === seq) {
         const p = this.inflight;
         this.inflight = undefined;
-        p.resolve(ok);
+        p.resolve(result);
         this.pump();
       }
     }
@@ -105,10 +106,14 @@ export class IosTouchClient {
   }
 
   private enqueue(op: number, count: number, payload: Buffer): Promise<boolean> {
-    if (this.closed) return Promise.resolve(false);
+    return this.request(op, count, payload).then((r) => r === 1);
+  }
+
+  private request(op: number, count: number, payload: Buffer): Promise<number> {
+    if (this.closed) return Promise.resolve(0);
     // Taps pile up quickly while the daemon is busy; keep the queue short so
     // the device never lags seconds behind the user.
-    if (this.queue.length >= 4) this.queue.shift()?.resolve(false);
+    if (this.queue.length >= 4) this.queue.shift()?.resolve(0);
     const header = Buffer.alloc(8);
     header[0] = op;
     header.writeUInt16LE(payload.length, 2); // protocol 2: payload bytes (count kept for readability at call sites)
@@ -148,6 +153,12 @@ export class IosTouchClient {
     return this.enqueue(8, 0, p);
   }
 
+  /** How the device is held, as the user's quarter turns (0–3); undefined if unknown. */
+  async currentTurns(): Promise<number | undefined> {
+    const o = await this.request(9, 0, Buffer.alloc(0));
+    return ({ 1: 0, 3: 1, 2: 2, 4: 3 } as Record<number, number>)[o]; // UIDeviceOrientation → turns
+  }
+
   /** Wakes a sleeping screen with a keyboard key press (harmless when it is on). */
   wake() { return this.enqueue(7, 0, Buffer.alloc(0)); }
 
@@ -161,8 +172,8 @@ export class IosTouchClient {
   close() {
     if (this.closed) return;
     this.closed = true;
-    this.inflight?.resolve(false);
-    for (const q of this.queue) q.resolve(false);
+    this.inflight?.resolve(0);
+    for (const q of this.queue) q.resolve(0);
     this.queue = [];
     this.sock?.destroy();
     this.onClose?.();

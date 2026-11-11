@@ -35,6 +35,12 @@ interface Entry {
   turns?: number;
   /** Android: the rotation settings before we changed them, restored on close. */
   savedRotation?: { accel: string; user: string };
+  /** Size of the frames the device sends. */
+  frame?: { width: number; height: number };
+  /** The user pressed a rotate button (until then turns follow the device). */
+  manualTurns?: boolean;
+  /** How the phone was held when mirroring started. */
+  initialTurns?: number;
   /** Android: keeps the locked rotation in place while the phone is turned. */
   rotationGuard?: NodeJS.Timeout;
   /** Last frame size, to keep the window's aspect ratio in step with rotation. */
@@ -51,6 +57,10 @@ export interface MirrorDeps {
   /** Called when the set of mirrored devices or a quality changes. */
   onChange(): void;
 }
+
+/** Locks the display rotation (WindowManager command; settings as a fallback on old Android). */
+const lockRotation = (n: number) =>
+  `cmd window user-rotation lock ${n} 2>/dev/null || { settings put system accelerometer_rotation 0; settings put system user_rotation ${n}; }`;
 
 export class MirrorManager {
   private entries = new Map<string, Entry>();
@@ -139,7 +149,7 @@ export class MirrorManager {
     });
     ipcMain.on('mirror:rotate', (e, turns: unknown) => {
       const entry = entryFor(e);
-      if (entry && Number.isInteger(turns) && (turns as number) >= 0 && (turns as number) < 4) void this.applyTurns(entry, turns as number);
+      if (entry && Number.isInteger(turns) && (turns as number) >= 0 && (turns as number) < 4) void this.setTurns(entry, turns as number);
     });
     ipcMain.on('mirror:retry', (e) => {
       const entry = entryFor(e);
@@ -175,7 +185,8 @@ export class MirrorManager {
       }
     };
     this.send(e, 'mirror:touch', true);
-    if (e.turns) void client.orientation(e.turns); // the phone was turned before touch came on
+    if (e.manualTurns) void client.orientation(e.turns ?? 0); // turned with the buttons before touch came on
+    else void this.detectTurns(e); // now the real orientation can be asked
     // Touch just came on while the window waits for a sleeping screen: wake it now.
     if (e.status.state === 'waiting') void this.wakeIos(e);
   }
@@ -202,7 +213,7 @@ export class MirrorManager {
     const entry: Entry = { device, win: this.createWindow(device), status: { state: 'connecting' } };
     this.entries.set(device.id, entry);
     const wc = entry.win.webContents;
-    entry.win.on('close', () => { this.onWindowClosed?.(wc); void this.applyTurns(entry, 0); });
+    entry.win.on('close', () => { this.onWindowClosed?.(wc); void this.restoreRotation(entry); });
     entry.win.on('closed', () => {
       clearInterval(entry.rotationGuard);
       entry.session?.close();
@@ -223,7 +234,7 @@ export class MirrorManager {
   close(id: string) {
     const e = this.entries.get(id);
     if (!e) return;
-    void this.applyTurns(e, 0); // put the device's rotation back
+    void this.restoreRotation(e); // give the device its rotation back
     this.entries.delete(id);
     e.session?.close();
     e.touch?.close();
@@ -271,42 +282,61 @@ export class MirrorManager {
   }
 
   /**
-   * Tells the device how the user turned it. Android: rotation locked to the
-   * new orientation (apps that allow it redraw; the original auto-rotate
-   * settings come back when turned upright again or the window closes).
-   * iOS: the runner sets the device orientation (needs touch control).
+   * How the phone is held when nobody pressed a rotate button: read from the
+   * device and sent to the window, so a phone lying on its side opens that way.
+   * Android: the display rotation (Surface rotation N = turned N quarter turns
+   * counter-clockwise). iOS: the runner's device orientation, or a guess from
+   * the frame shape without it.
    */
-  private async applyTurns(e: Entry, turns: number) {
-    if ((e.turns ?? 0) === turns && !(turns === 0 && e.savedRotation)) return;
+  private async detectTurns(e: Entry) {
+    if (e.manualTurns || this.entries.get(e.device.id) !== e) return;
+    let turns: number | undefined;
+    try {
+      if (e.device.platform === 'android') {
+        const out = await shell(e.device.serial, "dumpsys display | grep -m1 -o 'mCurrentOrientation=[0-3]' || dumpsys window displays | grep -m1 -o 'mRotation=[0-3]'");
+        const m = /=([0-3])/.exec(out);
+        if (m) turns = Number(m[1]);
+      } else {
+        turns = await e.touch?.currentTurns();
+        if (turns === undefined && e.frame) turns = e.frame.width > e.frame.height ? (e.turns === 3 ? 3 : 1) : 0;
+      }
+    } catch { /* keep what we have */ }
+    if (turns === undefined || e.manualTurns || this.entries.get(e.device.id) !== e) return;
+    e.initialTurns ??= turns;
+    if (turns === (e.turns ?? 0)) return;
+    e.turns = turns;
+    this.send(e, 'mirror:turns', turns);
+  }
+
+  /**
+   * The user pressed a rotate button. Android: rotation locked to the new
+   * orientation (apps that allow it redraw for it); the original auto-rotate
+   * settings come back when the window closes. iOS: the runner sets the
+   * device orientation (needs touch control).
+   */
+  private async setTurns(e: Entry, turns: number) {
+    e.manualTurns = true;
     e.turns = turns;
     const serial = e.device.serial;
     if (e.device.platform === 'ios') { await e.touch?.orientation(turns); return; }
     try {
-      if (turns === 0) {
-        clearInterval(e.rotationGuard);
-        e.rotationGuard = undefined;
-        const saved = e.savedRotation;
-        e.savedRotation = undefined;
-        if (saved) await shell(serial, `settings put system user_rotation ${saved.user} && settings put system accelerometer_rotation ${saved.accel}`);
-        return;
-      }
       if (!e.savedRotation) {
         const [accel, user] = (await shell(serial, 'settings get system accelerometer_rotation; settings get system user_rotation')).trim().split(/\s+/);
         e.savedRotation = { accel: /^\d+$/.test(accel ?? '') ? accel : '1', user: /^\d+$/.test(user ?? '') ? user : '0' };
       }
-      // Surface rotation N: the picture is drawn N quarter turns clockwise,
-      // which is a phone turned N quarter turns counter-clockwise.
-      await shell(serial, `settings put system accelerometer_rotation 0 && settings put system user_rotation ${turns}`);
+      // The window manager's own lock: writing the settings is not always
+      // applied (Android keeps its own copy of the locked rotation).
+      await shell(serial, lockRotation(turns));
       // Android moves the locked rotation back to the current one when a
-      // portrait-only screen (the home screen) comes up, so the next app opens
-      // upright. While turned, put it back whenever that happens.
+      // portrait-only screen (the home screen) comes up, so the next app would
+      // open upright. While locked, put it back whenever that happens.
       if (!e.rotationGuard) {
         let busy = false;
         e.rotationGuard = setInterval(() => {
-          if (busy || !e.turns || this.entries.get(e.device.id) !== e) return;
+          if (busy || !e.manualTurns || this.entries.get(e.device.id) !== e) return;
           busy = true;
-          const want = e.turns;
-          void shell(serial, `[ "$(settings get system user_rotation)" = "${want}" ] && [ "$(settings get system accelerometer_rotation)" = "0" ] || { settings put system accelerometer_rotation 0; settings put system user_rotation ${want}; }`)
+          const want = e.turns ?? 0;
+          void shell(serial, `[ "$(cmd window user-rotation 2>/dev/null)" = "lock ${want}" ] || { ${lockRotation(want)}; }`)
             .catch(() => undefined)
             .finally(() => { busy = false; });
         }, 1000);
@@ -314,6 +344,24 @@ export class MirrorManager {
     } catch {
       // device gone: nothing to restore
     }
+  }
+
+  /** Window closing: give the device its own rotation back. */
+  private async restoreRotation(e: Entry) {
+    clearInterval(e.rotationGuard);
+    e.rotationGuard = undefined;
+    if (!e.manualTurns) return;
+    e.manualTurns = false;
+    try {
+      if (e.device.platform === 'ios') { await e.touch?.orientation(e.initialTurns ?? 0); return; }
+      const saved = e.savedRotation;
+      e.savedRotation = undefined;
+      if (saved) {
+        await shell(e.device.serial, saved.accel === '1'
+          ? 'cmd window user-rotation free 2>/dev/null || settings put system accelerometer_rotation 1'
+          : lockRotation(Number(saved.user)));
+      }
+    } catch { /* device gone */ }
   }
 
   /**
@@ -364,6 +412,7 @@ export class MirrorManager {
     const events: SessionEvents = {
       onVideo: (v) => {
         if (e.session !== session) return;
+        if (v.type === 'size') { e.frame = { width: v.width, height: v.height }; void this.detectTurns(e); }
         if (v.type === 'packet' && firstFrame) { firstFrame = false; this.setStatus(e, { state: 'live' }); }
         this.send(e, 'mirror:video', v); // Buffers arrive in the renderer as Uint8Array (MirrorVideo)
       },
@@ -462,7 +511,10 @@ export class MirrorManager {
     const extraW = FRAME_PAD_X + TOOLBAR_WIDTH;
     // First frame: keep the window's height. Turned: keep the phone's size
     // (its long side stays as long), so it looks like the same phone turned.
-    let videoH = first ? Math.min(curH - extraH, work.height - 60 - extraH) : Math.round(Math.max(curW - extraW, curH - extraH) * (width > height ? height / width : 1));
+    // In both cases the phone's long side keeps its length (a phone that starts
+    // in landscape is as big as it would be upright).
+    const longSide = first ? Math.min(curH - extraH, work.height - 60 - extraH) : Math.max(curW - extraW, curH - extraH);
+    let videoH = Math.round(longSide * (width > height ? height / width : 1));
     let videoW = Math.round((videoH * width) / height);
     if (videoH > work.height - 60 - extraH) { videoH = work.height - 60 - extraH; videoW = Math.round((videoH * width) / height); }
     if (videoW > work.width - 40 - extraW) { videoW = work.width - 40 - extraW; videoH = Math.round((videoW * height) / width); }

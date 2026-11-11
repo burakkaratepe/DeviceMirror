@@ -115,6 +115,8 @@ export interface MirrorWindowApi {
   displaySize(width: number, height: number): void;
   /** The user turned the phone: quarter turns counter-clockwise from upright (0–3). */
   rotate(turns: number): void;
+  /** How the device is held (quarter turns counter-clockwise), until the user turns it. */
+  onTurns(cb: (turns: number) => void): void;
   /** Disconnects touch control; the runner keeps running for a quick restart. */
   iosTouchOff(): void;
   notice?(text: string): void;

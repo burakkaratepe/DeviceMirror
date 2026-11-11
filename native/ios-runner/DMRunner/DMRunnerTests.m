@@ -20,6 +20,7 @@
 //   op 5 hardware button  payload f32 button (2 volume up, 3 volume down, 100 lock)
 //   op 6 ping
 //   op 8 orientation  payload f32 UIDeviceOrientation (1 portrait, 2 upside down, 3 landscape left, 4 landscape right)
+//   op 9 orientation query: the ack's ok byte is the UIDeviceOrientation
 //   op 7 wake (a Shift key press: wakes a sleeping screen, harmless when it is on)
 //   x/y are normalized 0…1 of the portrait screen.
 // Device → Mac:
@@ -37,7 +38,7 @@ static const uint16_t kPort = 47310;
 // 2: every header's count is the payload length in bytes, so unknown ops can be
 //    skipped; ops 7 (wake) and 8 (orientation). Bump whenever the protocol or
 //    the runner's behaviour changes: the app replaces runners older than it needs.
-static const uint8_t kProtocolVersion = 2;
+static const uint8_t kProtocolVersion = 3; // 3: op 9 (orientation query)
 
 typedef struct __attribute__((packed)) {
   uint8_t op;
@@ -189,8 +190,15 @@ static BOOL synthesize(XCPointerEventPath *path) {
     uint16_t count = h.count;
     uint32_t seq = h.seq;
     dispatch_async(_events, ^{
-      BOOL ok = [self perform:op count:count payload:payload];
-      uint8_t ack[12] = {0x81, ok ? 1 : 0};
+      uint8_t result;
+      if (op == 9) { // query: the ack carries the device orientation instead of ok
+        __block UIDeviceOrientation o = UIDeviceOrientationUnknown;
+        onMain(^{ o = XCUIDevice.sharedDevice.orientation; });
+        result = (uint8_t)o;
+      } else {
+        result = [self perform:op count:count payload:payload] ? 1 : 0;
+      }
+      uint8_t ack[12] = {0x81, result};
       uint32_t micros = (uint32_t)(nowMicros() - received);
       memcpy(ack + 4, &seq, 4);
       memcpy(ack + 8, &micros, 4);

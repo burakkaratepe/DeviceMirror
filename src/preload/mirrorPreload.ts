@@ -39,6 +39,7 @@ const api: MirrorWindowApi = {
   showCaptures: () => ipcRenderer.send('capture:show'),
   displaySize: (w, h) => ipcRenderer.send('mirror:displaySize', w, h),
   rotate: (turns) => ipcRenderer.send('mirror:rotate', turns),
+  onTurns: (cb) => { ipcRenderer.on('mirror:turns', (_e, t: number) => cb(t)); },
 };
 
 contextBridge.exposeInMainWorld('mirror', api);

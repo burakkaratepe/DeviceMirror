@@ -395,29 +395,35 @@ function layoutFrame() {
 }
 new ResizeObserver(layoutFrame).observe(stage);
 
-// ---- rotate button ---------------------------------------------------------
-// Each press turns the phone a quarter turn counter-clockwise: the picture
-// swings round, the window takes the new shape, and the device is told so
-// apps that support the orientation redraw for it.
-const rotateBtn = document.getElementById('rotate') as HTMLButtonElement;
+// ---- rotate buttons --------------------------------------------------------
+// Turn the phone a quarter turn either way: the picture swings round, the
+// window takes the new shape, and the device is told so apps that support the
+// orientation redraw for it. Until a button is pressed, the window follows how
+// the device is actually held (reported by the main process).
 let rotating = false;
-rotateBtn.addEventListener('click', () => {
+function turn(by: 1 | -1) {
   if (rotating || !frameW) return;
   rotating = true;
   const st = stage.getBoundingClientRect();
   // Shrink while turning so the sideways phone still fits until the window reshapes.
   const fit = Math.min(1, (st.width - 2 * PAD_X) / view.h, (st.height - 2 * PAD_Y) / view.w);
   stage.style.transformOrigin = `${view.left + view.w / 2}px ${view.top + view.h / 2}px`;
-  const anim = stage.animate([{ transform: 'rotate(0deg) scale(1)' }, { transform: `rotate(-90deg) scale(${fit})` }], { duration: 320, easing: 'cubic-bezier(.3,.7,.3,1)' });
-  const done = () => {
-    turns = ((turns + 1) % 4) as QuarterTurns;
+  const anim = stage.animate([{ transform: 'rotate(0deg) scale(1)' }, { transform: `rotate(${-90 * by}deg) scale(${fit})` }], { duration: 320, easing: 'cubic-bezier(.3,.7,.3,1)' });
+  anim.onfinish = () => {
+    turns = ((turns + by + 4) % 4) as QuarterTurns;
     api.rotate(turns);
     layoutFrame();
     anim.cancel();
     rotating = false;
   };
-  anim.onfinish = done;
   anim.oncancel = () => { rotating = false; };
+}
+(document.getElementById('rotate-left') as HTMLButtonElement).addEventListener('click', () => turn(1));
+(document.getElementById('rotate-right') as HTMLButtonElement).addEventListener('click', () => turn(-1));
+api.onTurns((t) => {
+  if (rotating) return;
+  turns = (((t % 4) + 4) % 4) as QuarterTurns;
+  layoutFrame();
 });
 api.onVideo((v) => { if (v.type === 'size') requestAnimationFrame(layoutFrame); });
 api.onTouch(() => layoutFrame());
