@@ -330,3 +330,7 @@ for (const b of sideButtons) {
     setTimeout(() => b.classList.remove('pressed'), 110);
   });
 }
+
+// ---- window controls (the window has no system frame) ----------------------
+document.getElementById('win-close')!.addEventListener('click', () => api.windowAction('close'));
+document.getElementById('win-min')!.addEventListener('click', () => api.windowAction('minimize'));

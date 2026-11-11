@@ -104,6 +104,12 @@ export class MirrorManager {
     ipcMain.on('ios:button', (e, which: unknown) => {
       if (which === 'volumeUp' || which === 'volumeDown' || which === 'lock') void touchOf(e)?.button(which);
     });
+    ipcMain.on('mirror:window', (e, action: unknown) => {
+      const win = entryFor(e)?.win;
+      if (!win) return;
+      if (action === 'close') win.close();
+      else if (action === 'minimize') win.minimize();
+    });
     ipcMain.on('mirror:copy', (_e, text: unknown) => { if (typeof text === 'string' && text.length < 200) clipboard.writeText(text); });
     ipcMain.on('mirror:retry', (e) => {
       const entry = entryFor(e);
@@ -258,7 +264,12 @@ export class MirrorManager {
       minWidth: 260,
       minHeight: 320,
       title: device.name,
-      backgroundColor: '#0b0e14',
+      // The window IS the device: no system frame, transparent around the
+      // drawn phone (one frame instead of a window frame plus a phone frame).
+      frame: false,
+      transparent: true,
+      hasShadow: false,
+      backgroundColor: '#00000000',
       show: false,
       webPreferences: {
         preload: path.join(__dirname, 'mirrorPreload.js'),
