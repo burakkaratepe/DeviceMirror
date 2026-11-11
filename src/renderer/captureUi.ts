@@ -22,6 +22,10 @@ export function initCaptures(opts: {
   notify: (text: string) => void;
   /** True while the picture is live (not connecting or failed). */
   isLive: () => boolean;
+  /** How far the picture is turned on screen (counter-clockwise quarter turns). */
+  rotation: () => number;
+  /** Lets the capture code draw after every new frame. */
+  onFrame: (cb: () => void) => void;
 }) {
   const { api, canvas, fx, shotButton, recButton, notify } = opts;
   const hasPicture = () => opts.isLive() && canvas.width > 0 && canvas.height > 0;
@@ -30,14 +34,38 @@ export function initCaptures(opts: {
    * looks the same as the PNG for screen content at a fraction of the size.
    */
   const SHOT_TYPE = 'image/webp', SHOT_QUALITY = 0.9;
-  const encode = () => new Promise<Blob | null>((r) => canvas.toBlob(r, SHOT_TYPE, SHOT_QUALITY));
+
+  // Captures show the picture the way it is on screen (turned with the phone).
+  const rot = () => (((opts.rotation() % 4) + 4) % 4);
+  /** Size of the picture as shown. */
+  const shown = () => (rot() % 2 ? { w: canvas.height, h: canvas.width } : { w: canvas.width, h: canvas.height });
+  /** Draws the picture as shown, fitted and centred in a w×h target (black around it). */
+  function drawShown(g: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, w: number, h: number) {
+    const r = rot();
+    const sw = r % 2 ? canvas.height : canvas.width, sh = r % 2 ? canvas.width : canvas.height;
+    const s = Math.min(w / sw, h / sh);
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, w, h);
+    g.save();
+    g.translate(w / 2, h / 2);
+    g.rotate((-Math.PI / 2) * r);
+    g.drawImage(canvas, (-canvas.width * s) / 2, (-canvas.height * s) / 2, canvas.width * s, canvas.height * s);
+    g.restore();
+  }
+  const encode = async (): Promise<Blob | null> => {
+    const { w, h } = shown();
+    const c = new OffscreenCanvas(w, h);
+    drawShown(c.getContext('2d')!, w, h);
+    return c.convertToBlob({ type: SHOT_TYPE, quality: SHOT_QUALITY }).catch(() => null);
+  };
   /** 360 px wide JPEG for the captures grid. */
   const thumbnail = async (): Promise<Blob | null> => {
-    const w = 360, h = Math.round((canvas.height / canvas.width) * w);
+    const { w: sw, h: sh } = shown();
+    const w = 360, h = Math.round((sh / sw) * w);
     const c = new OffscreenCanvas(w, h);
     const g = c.getContext('2d')!;
     g.imageSmoothingQuality = 'high';
-    g.drawImage(canvas, 0, 0, w, h);
+    drawShown(g, w, h);
     return c.convertToBlob({ type: 'image/jpeg', quality: 0.82 }).catch(() => null);
   };
   const bytes = async (b: Blob) => new Uint8Array(await b.arrayBuffer());
@@ -49,7 +77,7 @@ export function initCaptures(opts: {
     if (!hasPicture() || shotBusy) return;
     shotBusy = true;
     try {
-      const w = canvas.width, h = canvas.height;
+      const { w, h } = shown();
       const [blob, thumb] = await Promise.all([encode(), thumbnail()]);
       if (!blob) return;
       shotEffect(blob);
@@ -104,6 +132,9 @@ export function initCaptures(opts: {
   let sendChain: Promise<void> = Promise.resolve();
   let badge: HTMLElement | undefined;
   let keepAlive: number | undefined;
+  const recCanvas = document.createElement('canvas');
+  let drawRec: (() => void) | undefined;
+  opts.onFrame(() => drawRec?.());
   let badgeTimer: number | undefined;
 
   const setState = (next: RecState) => {
@@ -150,13 +181,24 @@ export function initCaptures(opts: {
     const mime = MIME_CANDIDATES.find((m) => MediaRecorder.isTypeSupported(m));
     if (!mime) { notify('Screen recording is not supported here.'); setState('idle'); return; }
     poster = await thumbnail();
-    const id = await api.recStart(mime, canvas.width, canvas.height);
-    if (!id) { notify('Could not start the recording.'); setState('idle'); return; }
+    // The video is drawn onto its own canvas of a fixed size (the picture as
+    // shown when recording starts). The encoder cannot change resolution mid
+    // stream: recording the mirror canvas itself froze the video as soon as
+    // the phone turned. After a turn the picture is fitted into this size.
+    const { w: sw, h: sh } = shown();
+    const even = (n: number) => Math.max(2, Math.round(n / 2) * 2); // H.264 wants even sizes
+    recCanvas.width = even(sw);
+    recCanvas.height = even(sh);
+    const rg = recCanvas.getContext('2d', { alpha: false })!;
+    drawRec = () => drawShown(rg, recCanvas.width, recCanvas.height);
+    drawRec();
+    const id = await api.recStart(mime, recCanvas.width, recCanvas.height);
+    if (!id) { notify('Could not start the recording.'); setState('idle'); drawRec = undefined; return; }
     recId = id;
-    const stream = canvas.captureStream(60);
+    const stream = recCanvas.captureStream(60);
     // H.264 at about 2.5 bits per pixel per second: plenty for screen content
     // (sharp text, mostly still), a few MB per minute at 1080p.
-    const bitrate = Math.min(8_000_000, Math.max(2_500_000, Math.round(canvas.width * canvas.height * 2.5)));
+    const bitrate = Math.min(8_000_000, Math.max(2_500_000, Math.round(recCanvas.width * recCanvas.height * 2.5)));
     recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: bitrate });
     sendChain = Promise.resolve();
     recorder.ondataavailable = (e) => {
@@ -167,11 +209,9 @@ export function initCaptures(opts: {
     recorder.onstop = () => void finish(stream);
     recorder.onerror = () => { notify('The recording stopped because of an error.'); };
     recorder.start(1000);
-    // The canvas only yields a frame when it is painted, and a still screen is
-    // not repainted, so a still ending would be cut off. Repaint the same
-    // picture a few times a second while recording to keep frames coming.
-    const g = canvas.getContext('2d')!;
-    keepAlive = window.setInterval(() => g.drawImage(canvas, 0, 0), 100);
+    // Drawn on every new frame, and a few times a second anyway: a still
+    // screen sends no frames, and a still ending would otherwise be cut off.
+    keepAlive = window.setInterval(() => drawRec?.(), 100);
     startedAt = performance.now();
     setState('recording');
     showBadge();
@@ -191,6 +231,7 @@ export function initCaptures(opts: {
 
   async function finish(stream: MediaStream) {
     clearInterval(keepAlive);
+    drawRec = undefined;
     clearInterval(badgeTimer);
     badge?.remove();
     for (const t of stream.getTracks()) t.stop();

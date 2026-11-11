@@ -40,6 +40,8 @@ let waitingForKey = true;
 let pending: VideoFrame | undefined; // newest decoded frame not yet painted
 let frameW = 0;
 let frameH = 0;
+/** Called after each painted frame (screen recording draws its own copy). */
+const frameListeners: (() => void)[] = [];
 
 // ---- video -------------------------------------------------------------
 
@@ -53,6 +55,7 @@ function paint() {
   }
   ctx.drawImage(f, 0, 0);
   f.close();
+  for (const cb of frameListeners) cb();
   // Until the first frame the canvas is an empty 300x150 box: keep it hidden.
   if (!canvas.classList.contains('has-frame')) canvas.classList.add('has-frame');
 }
@@ -328,6 +331,7 @@ const keys = document.getElementById('keys') as HTMLDivElement;
 const fx = document.getElementById('fx') as HTMLDivElement;
 initCaptures({
   api, canvas, fx, notify: showToast, isLive: () => isLive,
+  rotation: () => orient.contentRot, onFrame: (cb) => { frameListeners.push(cb); },
   shotButton: document.getElementById('shot') as HTMLButtonElement,
   recButton: document.getElementById('rec') as HTMLButtonElement,
 });
