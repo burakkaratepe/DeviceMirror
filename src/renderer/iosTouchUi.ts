@@ -11,6 +11,11 @@ type FramePoint = { x: number; y: number; inside: boolean };
 
 const TAP_SLOP = 0.015; // normalized; below this a press is a tap, not a drag
 const LONG_PRESS_MS = 450;
+/**
+ * A mouse drag is slower than a finger flick, so iOS often reads it as a
+ * slow pan and does not change page. Drags are replayed this much faster.
+ */
+const SWIPE_SPEEDUP = 1.3;
 
 export function initIosTouch(
   api: MirrorWindowApi,
@@ -76,10 +81,10 @@ export function initIosTouch(
     const dot = document.createElementNS(SVG, 'circle');
     dot.setAttribute('r', '9');
     t.svg.append(dot);
-    const total = t.pts[t.pts.length - 1].t;
+    const total = t.pts[t.pts.length - 1].t; // in recorded time; the clock below runs SWIPE_SPEEDUP× faster
     const start = performance.now();
     const frame = () => {
-      const el = (performance.now() - start) / 1000;
+      const el = ((performance.now() - start) / 1000) * SWIPE_SPEEDUP; // same pace as the device
       let i = t.pts.findIndex((p) => p.t >= el);
       if (i < 0) i = t.pts.length - 1;
       const a = t.pts[Math.max(0, i - 1)], b = t.pts[i];
@@ -135,7 +140,7 @@ export function initIosTouch(
       api.iosTap(first.x, first.y, held >= LONG_PRESS_MS ? held / 1000 : 0.03);
     } else {
       extendTrail(e, (now - startTime) / 1000);
-      api.iosGesture(points);
+      api.iosGesture(points.map((q) => ({ ...q, t: q.t / SWIPE_SPEEDUP })));
       replayTrail();
     }
     points = [];

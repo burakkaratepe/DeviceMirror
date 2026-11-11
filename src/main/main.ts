@@ -133,6 +133,19 @@ function createWindow(firstLaunch: boolean) {
     });
 }
 
+// One instance only: a second one would start a second touch runner for the
+// same iPhone, and the two would knock each other off.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (!win) return;
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  });
+}
+
 app.whenReady().then(() => {
   splash = createSplash();
 
@@ -189,6 +202,9 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+// Also when the process is ended without a normal quit (Ctrl-C in a terminal).
+process.on('exit', () => iosRunner?.stopAll());
 
 app.on('before-quit', () => {
   mirrors?.closeAll();

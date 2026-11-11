@@ -174,8 +174,11 @@ export class IosRunnerManager {
   launch(udid: string, xctestrun: string): Promise<void> {
     this.stop(udid);
     return new Promise((resolve, reject) => {
+      // detached: own session without a controlling terminal, so nothing in
+      // xcodebuild can ever prompt for a password on the user's terminal.
       const child = spawn('/usr/bin/xcrun', ['xcodebuild', 'test-without-building', '-xctestrun', xctestrun, '-destination', `id=${udid}`], {
         stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
       });
       this.sessions.set(udid, child);
       let log = '';
@@ -201,8 +204,9 @@ export class IosRunnerManager {
     const child = this.sessions.get(udid);
     if (!child) return;
     this.sessions.delete(udid);
-    child.kill('SIGTERM');
-    setTimeout(() => { if (child.exitCode === null) child.kill('SIGKILL'); }, 3000);
+    // Kill the whole process group (xcrun → xcodebuild); synchronous so it
+    // also works from a process 'exit' handler.
+    try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
   }
 
   stopAll() { for (const udid of [...this.sessions.keys()]) this.stop(udid); }
