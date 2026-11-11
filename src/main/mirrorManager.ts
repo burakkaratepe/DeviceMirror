@@ -35,6 +35,8 @@ interface Entry {
   turns?: number;
   /** Android: the rotation settings before we changed them, restored on close. */
   savedRotation?: { accel: string; user: string };
+  /** Android: keeps the locked rotation in place while the phone is turned. */
+  rotationGuard?: NodeJS.Timeout;
   /** Last frame size, to keep the window's aspect ratio in step with rotation. */
   size?: { width: number; height: number };
   status: MirrorStatus;
@@ -202,6 +204,7 @@ export class MirrorManager {
     const wc = entry.win.webContents;
     entry.win.on('close', () => { this.onWindowClosed?.(wc); void this.applyTurns(entry, 0); });
     entry.win.on('closed', () => {
+      clearInterval(entry.rotationGuard);
       entry.session?.close();
       entry.touch?.close();
       if (this.entries.get(device.id) === entry) this.entries.delete(device.id);
@@ -280,6 +283,8 @@ export class MirrorManager {
     if (e.device.platform === 'ios') { await e.touch?.orientation(turns); return; }
     try {
       if (turns === 0) {
+        clearInterval(e.rotationGuard);
+        e.rotationGuard = undefined;
         const saved = e.savedRotation;
         e.savedRotation = undefined;
         if (saved) await shell(serial, `settings put system user_rotation ${saved.user} && settings put system accelerometer_rotation ${saved.accel}`);
@@ -292,6 +297,20 @@ export class MirrorManager {
       // Surface rotation N: the picture is drawn N quarter turns clockwise,
       // which is a phone turned N quarter turns counter-clockwise.
       await shell(serial, `settings put system accelerometer_rotation 0 && settings put system user_rotation ${turns}`);
+      // Android moves the locked rotation back to the current one when a
+      // portrait-only screen (the home screen) comes up, so the next app opens
+      // upright. While turned, put it back whenever that happens.
+      if (!e.rotationGuard) {
+        let busy = false;
+        e.rotationGuard = setInterval(() => {
+          if (busy || !e.turns || this.entries.get(e.device.id) !== e) return;
+          busy = true;
+          const want = e.turns;
+          void shell(serial, `[ "$(settings get system user_rotation)" = "${want}" ] && [ "$(settings get system accelerometer_rotation)" = "0" ] || { settings put system accelerometer_rotation 0; settings put system user_rotation ${want}; }`)
+            .catch(() => undefined)
+            .finally(() => { busy = false; });
+        }, 1000);
+      }
     } catch {
       // device gone: nothing to restore
     }

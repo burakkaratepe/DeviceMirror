@@ -7,6 +7,10 @@ import { connectToDevice, usbDeviceId } from './usbmux';
 
 export const RUNNER_PORT = 47310;
 
+/** Protocol version this app speaks (DMRunnerTests.m kProtocolVersion). */
+export const RUNNER_PROTOCOL = 2;
+export class OutdatedRunnerError extends Error {}
+
 export interface Hello { width: number; height: number; scale: number; version: number }
 interface Pending { frame: Buffer; resolve: (ok: boolean) => void }
 
@@ -33,6 +37,7 @@ export class IosTouchClient {
         await client.attach(sock, leftover);
         return client;
       } catch (e) {
+        if (e instanceof OutdatedRunnerError) throw e; // waiting will not help
         lastError = e;
         await new Promise((r) => setTimeout(r, 500));
       }
@@ -58,6 +63,13 @@ export class IosTouchClient {
           this.hello = { version: this.buf[1], width: this.buf.readFloatLE(4), height: this.buf.readFloatLE(8), scale: this.buf.readFloatLE(12) };
           this.buf = this.buf.subarray(16);
           clearTimeout(timer);
+          if (this.hello.version < RUNNER_PROTOCOL) {
+            // A runner from an older build (it can outlive the app): never talk
+            // to it, the setup replaces it with the current one.
+            sock.destroy();
+            reject(new OutdatedRunnerError(`touch runner protocol ${this.hello.version} < ${RUNNER_PROTOCOL}`));
+            return;
+          }
           resolve();
         }
         this.readAcks();
@@ -99,7 +111,8 @@ export class IosTouchClient {
     if (this.queue.length >= 4) this.queue.shift()?.resolve(false);
     const header = Buffer.alloc(8);
     header[0] = op;
-    header.writeUInt16LE(count, 2);
+    header.writeUInt16LE(payload.length, 2); // protocol 2: payload bytes (count kept for readability at call sites)
+    void count;
     return new Promise((resolve) => {
       this.queue.push({ frame: Buffer.concat([header, payload]), resolve });
       this.pump();

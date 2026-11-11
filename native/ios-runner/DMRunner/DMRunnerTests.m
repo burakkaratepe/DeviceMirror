@@ -12,9 +12,9 @@
 // single event: a tap, a long press, or a complete drag path with its timing.
 //
 // Wire format (little endian).
-// Mac → device: header 8 bytes  u8 op, u8 pad, u16 count, u32 seq
+// Mac → device: header 8 bytes  u8 op, u8 pad, u16 count (payload bytes), u32 seq
 //   op 1 tap      payload f32 x, f32 y, f32 holdSeconds
-//   op 2 gesture  payload count × (f32 x, f32 y, f32 seconds since start)
+//   op 2 gesture  payload n × (f32 x, f32 y, f32 seconds since start)
 //   op 3 text     payload count bytes of UTF-8
 //   op 4 home
 //   op 5 hardware button  payload f32 button (2 volume up, 3 volume down, 100 lock)
@@ -34,7 +34,10 @@
 #import "XCTestPrivate.h"
 
 static const uint16_t kPort = 47310;
-static const uint8_t kProtocolVersion = 1;
+// 2: every header's count is the payload length in bytes, so unknown ops can be
+//    skipped; ops 7 (wake) and 8 (orientation). Bump whenever the protocol or
+//    the runner's behaviour changes: the app replaces runners older than it needs.
+static const uint8_t kProtocolVersion = 2;
 
 typedef struct __attribute__((packed)) {
   uint8_t op;
@@ -179,13 +182,7 @@ static BOOL synthesize(XCPointerEventPath *path) {
   DMHeader h;
   while (readFully(fd, &h, sizeof(h))) {
     double received = nowMicros();
-    size_t payloadSize = 0;
-    switch (h.op) {
-      case 1: case 5: case 8: payloadSize = 12; break;
-      case 2: payloadSize = (size_t)h.count * 12; break;
-      case 3: payloadSize = h.count; break;
-      default: payloadSize = 0;
-    }
+    size_t payloadSize = h.count; // always the payload length: unknown ops are read and ignored
     NSMutableData *payload = [NSMutableData dataWithLength:payloadSize];
     if (payloadSize && !readFully(fd, payload.mutableBytes, payloadSize)) break;
     uint8_t op = h.op;
@@ -215,6 +212,7 @@ static BOOL synthesize(XCPointerEventPath *path) {
       return synthesize(path);
     }
     case 2: { // full drag path with its real timing
+      count = (uint16_t)(payload.length / 12); // points
       if (count < 2) return NO;
       XCPointerEventPath *path = touchPath([self point:f]);
       double last = 0;
@@ -226,7 +224,7 @@ static BOOL synthesize(XCPointerEventPath *path) {
       [path liftUpAtOffset:last + 0.01];
       return synthesize(path);
     }
-    case 3: { // text
+    case 3: { // text (count = bytes)
       NSString *text = [[NSString alloc] initWithData:payload encoding:NSUTF8StringEncoding];
       if (!text.length) return YES;
       XCPointerEventPath *path = [[NSClassFromString(@"XCPointerEventPath") alloc] initForTextInput];
