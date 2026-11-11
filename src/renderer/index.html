@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
+    <title>Device Mirror</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3.5" y="5" width="9" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.7" />
+          <rect x="11.5" y="3" width="9" height="15" rx="2" fill="currentColor" fill-opacity="0.25" stroke="currentColor" stroke-width="1.7" />
+        </svg>
+        <span>Device<b>Mirror</b></span>
+      </div>
+      <nav>
+        <a class="nav-item active" aria-current="page">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.6" /><line x1="11" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+          Devices
+        </a>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="service" id="svc-android"><span class="svc-dot"></span><span class="svc-label">Android</span><span class="svc-detail"></span></div>
+        <div class="service" id="svc-ios"><span class="svc-dot"></span><span class="svc-label">iOS</span><span class="svc-detail"></span></div>
+      </div>
+    </aside>
+    <main>
+      <header class="page-head">
+        <h1>Devices <span id="count" class="count"></span></h1>
+        <p class="subtitle">Phones and tablets connected to this computer over USB. Pick one to mirror its screen.</p>
+      </header>
+      <div id="notices"></div>
+      <section id="grid" class="grid" aria-label="Connected devices"></section>
+      <div id="empty" class="empty" hidden>
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <rect x="38" y="14" width="44" height="80" rx="9" fill="none" stroke="currentColor" stroke-width="3" />
+          <path d="M60 94 v10 a8 8 0 0 0 8 8 h12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="4 6" />
+          <line x1="54" y1="84" x2="66" y2="84" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
+        </svg>
+        <p class="empty-title">No devices connected</p>
+        <p class="empty-text">Connect an Android or iOS device with a USB cable. It shows up here automatically.</p>
+      </div>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

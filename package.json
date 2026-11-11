@@ -1,0 +1,36 @@
+{
+  "name": "device-mirror",
+  "productName": "Device Mirror",
+  "version": "0.1.0",
+  "description": "Mirror and control Android and iOS devices from your desktop.",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test dist/test/",
+    "probe": "npm run build && node dist/probe.js",
+    "dist": "npm run build && electron-builder"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "electron": "^45.3.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.0"
+  },
+  "build": {
+    "appId": "com.devicemirror.app",
+    "productName": "Device Mirror",
+    "directories": { "output": "release" },
+    "asar": true,
+    "compression": "maximum",
+    "electronLanguages": ["en"],
+    "files": ["dist/**/*", "!dist/test/**", "!dist/probe.js", "!**/*.map", "package.json"],
+    "extraResources": [{ "from": "resources/bin/${os}-${arch}", "to": "bin", "filter": ["**/*"] }],
+    "mac": { "target": ["dmg"], "category": "public.app-category.developer-tools" },
+    "win": { "target": ["nsis"] },
+    "linux": { "target": ["AppImage", "deb"], "category": "Development" }
+  }
+}

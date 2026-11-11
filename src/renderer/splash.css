@@ -1,0 +1,48 @@
+/* Shown in a frameless, transparent window while the app starts. */
+html, body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  -webkit-app-region: drag;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Ubuntu, sans-serif;
+}
+body { display: grid; place-items: center; }
+
+.panel {
+  box-sizing: border-box;
+  width: 300px;
+  padding: 34px 32px 26px;
+  border-radius: 22px;
+  background: rgba(20, 27, 45, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(18px) saturate(140%);
+  color: #c9cfdc;
+  text-align: center;
+  animation: enter 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+body.leaving .panel { animation: leave 0.25s ease-in both; }
+
+.mark { width: 52px; height: 52px; color: #6bb3a3; }
+.mark rect { fill: none; stroke: currentColor; stroke-width: 1.6; }
+.mark .front { fill: currentColor; fill-opacity: 0.22; animation: float 1.8s ease-in-out infinite; }
+
+.title { margin-top: 12px; font-size: 21px; font-weight: 700; color: #fff; letter-spacing: -0.01em; }
+.title b { color: #6bb3a3; font-weight: 700; }
+
+.bar { position: relative; height: 3px; margin: 22px 18px 12px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.bar span { position: absolute; top: 0; bottom: 0; width: 38%; border-radius: 3px; background: linear-gradient(90deg, transparent, #6bb3a3, transparent); animation: slide 1.15s ease-in-out infinite; }
+
+.status { font-size: 12px; color: #7d869a; }
+
+@keyframes enter { from { opacity: 0; transform: translateY(6px) scale(0.97); } }
+@keyframes leave { to { opacity: 0; transform: scale(0.98); } }
+@keyframes slide { from { left: -40%; } to { left: 100%; } }
+@keyframes float { 50% { transform: translate(-0.6px, -0.8px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .panel, .mark .front, .bar span { animation: none; }
+  .bar span { left: 31%; }
+}
