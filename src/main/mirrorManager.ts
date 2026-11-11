@@ -305,15 +305,39 @@ export class MirrorManager {
       },
     });
     win.removeMenu();
+    this.placeBesideOthers(win);
     win.once('ready-to-show', () => win.show());
     void win.loadFile(path.join(__dirname, 'renderer', 'mirror.html'));
     return win;
   }
 
+  /**
+   * Puts a new mirror window next to the one already open (right, else left)
+   * on the same display, aligned at the top. When neither side has room but
+   * the two fit side by side, the open window moves over to make room.
+   * (The window edges are transparent padding, so they can touch.)
+   */
+  private placeBesideOthers(win: BrowserWindow) {
+    const other = [...this.entries.values()].map((e) => e.win).filter((w) => w !== win && !w.isDestroyed() && !w.isMinimized()).pop();
+    if (!other) return; // the first window: the OS centres it
+    const b = other.getBounds();
+    const [w, h] = win.getSize();
+    const wa = screen.getDisplayMatching(b).workArea;
+    const y = Math.max(wa.y, Math.min(b.y, wa.y + wa.height - h));
+    if (b.x + b.width + w <= wa.x + wa.width) { win.setPosition(b.x + b.width, y); return; }
+    if (b.x - w >= wa.x) { win.setPosition(b.x - w, y); return; }
+    if (b.width + w <= wa.width) {
+      const left = wa.x + Math.round((wa.width - b.width - w) / 2);
+      other.setPosition(left, b.y);
+      win.setPosition(left + b.width, y);
+    }
+  }
+
   /** Resizes the window to the frame's aspect ratio (keeps its height). */
   private fitToFrame(e: Entry, width: number, height: number) {
     if (e.win.isDestroyed()) return;
-    const rotated = !e.size || (e.size.width > e.size.height) !== (width > height);
+    const first = !e.size;
+    const rotated = first || (e.size!.width > e.size!.height) !== (width > height);
     e.size = { width, height };
     e.win.setAspectRatio(width / height, { width: FRAME_PAD_X, height: TOOLBAR_HEIGHT + FRAME_PAD_Y });
     if (!rotated || e.win.isMaximized() || e.win.isFullScreen()) return;
@@ -324,5 +348,7 @@ export class MirrorManager {
     let videoW = Math.round((videoH * width) / height);
     if (videoW > work.width - 40 - FRAME_PAD_X) { videoW = work.width - 40 - FRAME_PAD_X; videoH = Math.round((videoW * height) / width); }
     e.win.setContentSize(Math.max(videoW + FRAME_PAD_X, 260), videoH + extraH);
+    // The real size is known now; keep the window clear of the other one.
+    if (first) this.placeBesideOthers(e.win);
   }
 }

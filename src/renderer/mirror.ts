@@ -21,7 +21,6 @@ function showToast(text: string) {
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => { toast.hidden = true; }, 5000);
 }
-api.notice = showToast;
 api.onNotice(showToast);
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
@@ -295,7 +294,7 @@ canvas.addEventListener('wheel', (e) => {
 // ---- iOS touch control -------------------------------------------------
 
 const stage = document.getElementById('stage') as HTMLDivElement;
-const iosTouch = initIosTouch(api, canvas, stage, toFrame, () => ({ w: frameW, h: frameH }));
+const iosTouch = initIosTouch({ ...api, notice: showToast }, canvas, stage, toFrame, () => ({ w: frameW, h: frameH }));
 api.onTouch((on) => {
   iosTouch.setEnabled(on && platform === 'ios');
   document.body.classList.toggle('touch-on', on);
