@@ -25,17 +25,40 @@ const escAttr = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 function screenFill(id: string, s: Screen, colors: [string, string, string], preview?: Preview, dim?: boolean): string {
   const shape = `x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" rx="${s.r}"`;
   if (preview) {
-    const landscape = preview.width > preview.height;
-    return `<defs><clipPath id="${id}-clip"><rect ${shape}/></clipPath></defs>
-      <rect ${shape} fill="#000"/>
-      <image href="${escAttr(preview.url)}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" clip-path="url(#${id}-clip)" preserveAspectRatio="${landscape ? 'xMidYMid meet' : 'xMidYMid slice'}"/>`;
+    const clip = `<defs><clipPath id="${id}-clip"><rect ${shape}/></clipPath></defs><rect ${shape} fill="#000"/>`;
+    const href = escAttr(preview.url);
+    if (preview.width > preview.height) {
+      // Landscape shot: the illustration is drawn turned a quarter turn (see
+      // mockupSvg), so turn the image back to read upright in it.
+      const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+      // The clip sits on a group: on the image itself it would turn with it.
+      return `${clip}<g clip-path="url(#${id}-clip)"><image href="${href}" x="${cx - s.h / 2}" y="${cy - s.w / 2}" width="${s.h}" height="${s.w}" transform="rotate(90 ${cx} ${cy})" preserveAspectRatio="xMidYMid slice"/></g>`;
+    }
+    return `${clip}<image href="${href}" x="${s.x}" y="${s.y}" width="${s.w}" height="${s.h}" clip-path="url(#${id}-clip)" preserveAspectRatio="xMidYMid slice"/>`;
   }
   const [a, b, c] = colors;
   return `<defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="0.55" stop-color="${b}"/><stop offset="1" stop-color="${c}"/></linearGradient></defs>
     <rect ${shape} fill="url(#${id})"/>${dim ? `<rect ${shape} fill="#000" fill-opacity="0.72"/>` : ''}`;
 }
 
+/**
+ * The device illustration. With a landscape screenshot (the phone was on its
+ * side) the whole drawing is turned a quarter turn counter-clockwise and the
+ * shot inside is shown upright.
+ */
 export function mockupSvg(d: Device, uid: string): string {
+  const svg = portraitSvg(d, uid);
+  if (!d.preview || d.preview.width <= d.preview.height) return svg;
+  const m = /viewBox="0 0 (\d+) (\d+)"/.exec(svg);
+  if (!m) return svg;
+  const w = Number(m[1]), h = Number(m[2]);
+  return svg
+    .replace(m[0], `viewBox="0 0 ${h} ${w}" class="landscape"`)
+    .replace(/(<svg[^>]*>)/, `$1<g transform="translate(0 ${w}) rotate(-90)">`)
+    .replace(/<\/svg>\s*$/, '</g></svg>');
+}
+
+function portraitSvg(d: Device, uid: string): string {
   const id = `scr-${uid}`;
   const p = d.preview;
   const dim = d.screenOff;
