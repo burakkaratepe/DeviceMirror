@@ -1,7 +1,7 @@
 {
   "name": "device-mirror",
   "productName": "Device Mirror",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Mirror and control Android and iOS devices from your desktop.",
   "license": "Apache-2.0",
   "author": {
@@ -90,7 +90,8 @@
       "category": "public.app-category.developer-tools",
       "extendInfo": {
         "NSCameraUsageDescription": "Device Mirror reads the screen of connected iPhones and iPads. macOS treats that screen as a camera."
-      }
+      },
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "win": {
       "target": [
