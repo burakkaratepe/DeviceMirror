@@ -3,6 +3,11 @@
   "productName": "Device Mirror",
   "version": "0.1.0",
   "description": "Mirror and control Android and iOS devices from your desktop.",
+  "license": "MIT",
+  "author": {
+    "name": "Burak Karatepe",
+    "email": "burakaratepe@hotmail.com"
+  },
   "private": true,
   "main": "dist/main.js",
   "scripts": {
@@ -64,6 +69,14 @@
           "!**/xcuserdata/**",
           "!**/*.xcworkspace/**"
         ]
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
       }
     ],
     "mac": {
