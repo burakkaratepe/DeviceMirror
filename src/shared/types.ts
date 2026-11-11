@@ -57,7 +57,10 @@ export interface MirrorWindowApi {
   onInfo(cb: (i: MirrorInfo) => void): void;
   touch(action: 0 | 1 | 2, x: number, y: number): void;
   scroll(x: number, y: number, h: number, v: number): void;
-  key(keycode: number): void;
+  key(keycode: number, metaState?: number): void;
+  text(text: string): void;
+  /** Pastes the computer's clipboard into the device. */
+  paste(): void;
   setQuality(q: Quality): void;
   retry(): void;
 }

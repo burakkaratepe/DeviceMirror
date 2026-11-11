@@ -259,17 +259,53 @@ export class AndroidMirrorSession {
     this.send(b);
   }
 
-  /** Presses and releases an Android keycode (BACK 4, HOME 3, APP_SWITCH 187). */
-  key(keycode: number) {
+  /** Presses and releases an Android keycode (BACK 4, HOME 3, APP_SWITCH 187, …). */
+  key(keycode: number, metaState = 0) {
     for (const action of [0, 1]) {
       const b = Buffer.alloc(14);
       b[0] = 0; // INJECT_KEYCODE
       b[1] = action;
       b.writeInt32BE(keycode, 2);
       b.writeInt32BE(0, 6); // repeat
-      b.writeInt32BE(0, 10); // meta state
+      b.writeInt32BE(metaState, 10);
       this.send(b);
     }
+  }
+
+  /**
+   * Types text. scrcpy injects it through the device key map, which only
+   * covers ASCII; other characters go through the clipboard and are pasted.
+   */
+  text(s: string) {
+    let ascii = '';
+    const flush = () => {
+      for (let i = 0; i < ascii.length; i += 300) {
+        const body = Buffer.from(ascii.slice(i, i + 300), 'utf8');
+        const b = Buffer.alloc(5);
+        b[0] = 1; // INJECT_TEXT
+        b.writeUInt32BE(body.length, 1);
+        this.send(Buffer.concat([b, body]));
+      }
+      ascii = '';
+    };
+    for (const ch of s) {
+      if (/^[\x20-\x7e]$/.test(ch)) ascii += ch;
+      else { flush(); this.setClipboard(ch, true); }
+    }
+    flush();
+  }
+
+  private clipboardSeq = 0n;
+
+  /** Sets the device clipboard; with `paste` it is also pasted into the focused field. */
+  setClipboard(text: string, paste: boolean) {
+    const body = Buffer.from(text, 'utf8').subarray(0, 256 * 1024 - 14);
+    const b = Buffer.alloc(14);
+    b[0] = 9; // SET_CLIPBOARD
+    b.writeBigUInt64BE(++this.clipboardSeq, 1);
+    b[9] = paste ? 1 : 0;
+    b.writeUInt32BE(body.length, 10);
+    this.send(Buffer.concat([b, body]));
   }
 
   private serverError(): string | undefined {

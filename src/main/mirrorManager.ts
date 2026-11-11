@@ -1,6 +1,6 @@
 // Owns mirror windows and their device sessions; enforces the concurrent limit.
 
-import { BrowserWindow, ipcMain, screen, type IpcMainEvent } from 'electron';
+import { BrowserWindow, clipboard, ipcMain, screen, type IpcMainEvent } from 'electron';
 import path from 'node:path';
 import { AndroidMirrorSession, QUALITY_PARAMS } from './android/scrcpy';
 import type { Settings } from './settings';
@@ -42,8 +42,17 @@ export class MirrorManager {
     ipcMain.on('mirror:scroll', (e, x: unknown, y: unknown, h: unknown, v: unknown) => {
       if ([x, y, h, v].every((n) => typeof n === 'number')) entryFor(e)?.session?.scroll(x as number, y as number, h as number, v as number);
     });
-    ipcMain.on('mirror:key', (e, code: unknown) => {
-      if (code === 3 || code === 4 || code === 187) entryFor(e)?.session?.key(code);
+    ipcMain.on('mirror:key', (e, code: unknown, meta: unknown) => {
+      if (Number.isInteger(code) && (code as number) > 0 && (code as number) < 400) {
+        entryFor(e)?.session?.key(code as number, Number.isInteger(meta) ? (meta as number) : 0);
+      }
+    });
+    ipcMain.on('mirror:text', (e, text: unknown) => {
+      if (typeof text === 'string' && text.length > 0 && text.length <= 1000) entryFor(e)?.session?.text(text);
+    });
+    ipcMain.on('mirror:paste', async (e) => {
+      const text = await clipboard.readText(); // async in recent Electron versions
+      if (text) entryFor(e)?.session?.setClipboard(text, true);
     });
     ipcMain.on('mirror:quality', (e, q: unknown) => {
       const entry = entryFor(e);

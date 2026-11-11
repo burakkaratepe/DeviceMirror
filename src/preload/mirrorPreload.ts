@@ -8,7 +8,9 @@ const api: MirrorWindowApi = {
   onInfo: (cb) => { ipcRenderer.on('mirror:info', (_e, i: MirrorInfo) => cb(i)); },
   touch: (action, x, y) => ipcRenderer.send('mirror:touch', action, x, y),
   scroll: (x, y, h, v) => ipcRenderer.send('mirror:scroll', x, y, h, v),
-  key: (code) => ipcRenderer.send('mirror:key', code),
+  key: (code, meta) => ipcRenderer.send('mirror:key', code, meta ?? 0),
+  text: (text) => ipcRenderer.send('mirror:text', text),
+  paste: () => ipcRenderer.send('mirror:paste'),
   setQuality: (q: Quality) => ipcRenderer.send('mirror:quality', q),
   retry: () => ipcRenderer.send('mirror:retry'),
 };

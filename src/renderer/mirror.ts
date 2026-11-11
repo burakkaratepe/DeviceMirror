@@ -115,6 +115,44 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('.nav-keys button')
   b.addEventListener('click', () => api.key(Number(b.dataset.key)));
 }
 
+// Toolbar buttons must not keep keyboard focus, or Space/Enter would press
+// them instead of reaching the device.
+for (const b of document.querySelectorAll<HTMLButtonElement>('#toolbar button')) {
+  b.addEventListener('mousedown', (e) => e.preventDefault());
+}
+
+// ---- keyboard ----------------------------------------------------------
+
+const META_CTRL = 0x3000; // META_CTRL_ON | META_CTRL_LEFT_ON
+const META_SHIFT = 0x41; // META_SHIFT_ON | META_SHIFT_LEFT_ON
+const SPECIAL_KEYS: Record<string, number> = {
+  Enter: 66, Backspace: 67, Delete: 112, Tab: 61, Escape: 111,
+  ArrowUp: 19, ArrowDown: 20, ArrowLeft: 21, ArrowRight: 22,
+  Home: 122, End: 123, PageUp: 92, PageDown: 93,
+};
+
+window.addEventListener('keydown', (e) => {
+  if (e.isComposing || (e.target as HTMLElement).closest?.('#overlay button')) return;
+  const shortcut = e.metaKey || e.ctrlKey; // ⌘ on macOS, Ctrl elsewhere
+  if (shortcut && !e.altKey && /^[a-z]$/i.test(e.key)) {
+    e.preventDefault();
+    const letter = e.key.toLowerCase();
+    if (letter === 'v') api.paste(); // computer clipboard → device
+    else if (letter !== 'q' && letter !== 'w') api.key(29 + letter.charCodeAt(0) - 97, META_CTRL); // KEYCODE_A = 29
+    return;
+  }
+  const special = SPECIAL_KEYS[e.key];
+  if (special !== undefined) {
+    e.preventDefault();
+    api.key(special, e.shiftKey ? META_SHIFT : 0);
+    return;
+  }
+  if (!shortcut && [...e.key].length === 1) {
+    e.preventDefault();
+    api.text(e.key);
+  }
+});
+
 // ---- touch input -------------------------------------------------------
 
 /** Maps a pointer position to frame pixels (canvas uses object-fit: contain). */
