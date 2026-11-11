@@ -5,11 +5,11 @@
 // so stopping only has to close the file and write a thumbnail.
 // The main window shows them through the dm-capture:// protocol.
 
-import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, type WriteStream } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync, type WriteStream } from 'node:fs';
 import { copyFile } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, type WebContents } from 'electron';
+import { Readable } from 'node:stream';
+import { app, BrowserWindow, dialog, ipcMain, protocol, type WebContents } from 'electron';
 import type { Capture, CaptureKind } from '../shared/types';
 import { fixFragmentedMp4Duration } from './mp4Duration';
 
@@ -151,9 +151,37 @@ export class CaptureStore {
       const name = path.basename(decodeURIComponent(new URL(req.url).pathname));
       const known = this.items.some((c) => c.file === name || c.thumb === name);
       if (!known) return new Response('Not found', { status: 404 });
-      return net.fetch(pathToFileURL(path.join(this.dir, name)).toString(), { headers: req.headers });
+      return serveFile(path.join(this.dir, name), req.headers.get('range'));
     });
   }
+}
+
+const MIME: Record<string, string> = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.webp': 'image/webp', '.png': 'image/png', '.jpg': 'image/jpeg' };
+
+/**
+ * A file with HTTP range support. The video player seeks by asking for byte
+ * ranges; without 206 answers the seek bar could not be used.
+ */
+function serveFile(file: string, range: string | null): Response {
+  let size: number;
+  try { size = statSync(file).size; } catch { return new Response('Not found', { status: 404 }); }
+  const type = MIME[path.extname(file).toLowerCase()] ?? 'application/octet-stream';
+  const body = (start: number, end: number) => Readable.toWeb(createReadStream(file, { start, end })) as ReadableStream;
+  const m = range && /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+  if (!m || (!m[1] && !m[2])) {
+    return new Response(size ? body(0, size - 1) : null, { status: 200, headers: { 'Content-Type': type, 'Content-Length': String(size), 'Accept-Ranges': 'bytes' } });
+  }
+  let start = m[1] ? Number(m[1]) : Math.max(0, size - Number(m[2])); // "bytes=-N": the last N bytes
+  let end = m[1] && m[2] ? Number(m[2]) : size - 1;
+  end = Math.min(end, size - 1);
+  if (start > end || start >= size) {
+    return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
+  }
+  start = Math.max(0, start);
+  return new Response(body(start, end), {
+    status: 206,
+    headers: { 'Content-Type': type, 'Content-Length': String(end - start + 1), 'Content-Range': `bytes ${start}-${end}/${size}`, 'Accept-Ranges': 'bytes' },
+  });
 }
 
 /** IPC for mirror windows (saving) and the main window (listing, download, delete). */
