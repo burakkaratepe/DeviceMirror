@@ -15,6 +15,14 @@ test('plist parses self-closing and whitespace-formatted documents', () => {
   assert.deepEqual(parsePlist(xml), { A: '', B: [], C: 42 });
 });
 
+test('finds the layout Android assigned to the virtual keyboard', async () => {
+  const { parseKeyboardLayout } = await import('../main/keyboardLayout');
+  const dump = `  107: Device Mirror Keyboard\n      Classes: KEYBOARD | ALPHAKEY\n      Overlay KeyCharacterMapFile: com.android.inputdevices/com.android.inputdevices.InputDeviceReceiver/keyboard_layout_turkish\n`;
+  assert.deepEqual(parseKeyboardLayout(dump), { id: 'keyboard_layout_turkish', label: 'Turkish Q' });
+  assert.equal(parseKeyboardLayout('  12: Some Other Keyboard\n')?.id, undefined);
+  assert.equal(parseKeyboardLayout('  9: Device Mirror Keyboard\n      Classes: KEYBOARD\n')?.id, 'keyboard_layout_english_us');
+});
+
 test('parses track-devices-l output', () => {
   const list = parseDeviceList(
     'R58N12ABCDE            device usb:0-1.1 product:r9sxtur model:SM_G990E device:r9s transport_id:21\nemulator-5554 unauthorized transport_id:3\n',

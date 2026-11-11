@@ -2,6 +2,7 @@
 // frame on a canvas, and turns pointer input into device touch events.
 
 import type { MirrorStatus, MirrorVideo, MirrorWindowApi, Quality } from '../shared/types';
+import { HidKeyboard } from './hidKeyboard';
 
 declare global {
   interface Window { mirror: MirrorWindowApi }
@@ -123,35 +124,61 @@ for (const b of document.querySelectorAll<HTMLButtonElement>('#toolbar button'))
 
 // ---- keyboard ----------------------------------------------------------
 
-const META_CTRL = 0x3000; // META_CTRL_ON | META_CTRL_LEFT_ON
-const META_SHIFT = 0x41; // META_SHIFT_ON | META_SHIFT_LEFT_ON
-const SPECIAL_KEYS: Record<string, number> = {
-  Enter: 66, Backspace: 67, Delete: 112, Tab: 61, Escape: 111,
-  ArrowUp: 19, ArrowDown: 20, ArrowLeft: 21, ArrowRight: 22,
-  Home: 122, End: 123, PageUp: 92, PageDown: 93,
-};
+// Physical keys go to a virtual hardware keyboard on the device (see
+// hidKeyboard.ts); the device's layout setting turns them into characters,
+// so Turkish and other non-ASCII letters work in every app.
+let layoutChecked = false;
+const keyboard = new HidKeyboard((r) => {
+  api.hid(r);
+  if (!layoutChecked) { layoutChecked = true; setTimeout(() => void checkLayout(), 1200); } // keyboard registers on first report
+});
+
+// ---- keyboard layout hint ------------------------------------------------
+//
+// Android gives a new hardware keyboard the English (US) layout. When this
+// computer uses another layout (e.g. Turkish Q), point the user to the
+// device setting once; Android remembers the choice for this keyboard.
+
+const layoutBar = document.getElementById('layout-bar') as HTMLDivElement;
+const layoutText = document.getElementById('layout-text') as HTMLSpanElement;
+let layoutDismissed = false;
+
+async function hostLayoutHint(): Promise<{ isUS: boolean; suggestion: string }> {
+  const kb = (navigator as Navigator & { keyboard?: { getLayoutMap(): Promise<Map<string, string>> } }).keyboard;
+  if (!kb) return { isUS: true, suggestion: '' };
+  const map = await kb.getLayoutMap();
+  const isUS = map.get('KeyQ') === 'q' && map.get('Semicolon') === ';' && map.get('Quote') === "'" && map.get('BracketLeft') === '[';
+  const suggestion = map.get('Semicolon') === 'ş' ? 'Turkish Q' : map.get('KeyF') === 'ı' ? 'Turkish F' : 'the same layout as this computer';
+  return { isUS, suggestion };
+}
+
+async function checkLayout() {
+  if (layoutDismissed) return;
+  const [device, host] = await Promise.all([api.keyboardLayout(), hostLayoutHint()]);
+  const mismatch = !!device && !host.isUS && device.id === 'keyboard_layout_english_us';
+  layoutText.textContent = mismatch ? `Phone keyboard layout is ${device!.label}. Set it to ${host.suggestion} to type every character.` : '';
+  layoutBar.hidden = !mismatch;
+}
+document.getElementById('layout-open')!.addEventListener('click', () => api.keyboardSettings());
+document.getElementById('layout-close')!.addEventListener('click', () => { layoutDismissed = true; layoutBar.hidden = true; });
+window.addEventListener('focus', () => { if (!layoutBar.hidden) void checkLayout(); });
 
 window.addEventListener('keydown', (e) => {
-  if (e.isComposing || (e.target as HTMLElement).closest?.('#overlay button')) return;
-  const shortcut = e.metaKey || e.ctrlKey; // ⌘ on macOS, Ctrl elsewhere
-  if (shortcut && !e.altKey && /^[a-z]$/i.test(e.key)) {
+  if ((e.target as HTMLElement).closest?.('#overlay button')) return;
+  // ⌘V / Ctrl+V pastes the computer's clipboard instead of the device's.
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.code === 'KeyV') {
     e.preventDefault();
-    const letter = e.key.toLowerCase();
-    if (letter === 'v') api.paste(); // computer clipboard → device
-    else if (letter !== 'q' && letter !== 'w') api.key(29 + letter.charCodeAt(0) - 97, META_CTRL); // KEYCODE_A = 29
+    api.paste();
     return;
   }
-  const special = SPECIAL_KEYS[e.key];
-  if (special !== undefined) {
-    e.preventDefault();
-    api.key(special, e.shiftKey ? META_SHIFT : 0);
-    return;
-  }
-  if (!shortcut && [...e.key].length === 1) {
-    e.preventDefault();
-    api.text(e.key);
-  }
+  if (keyboard.handle(e, true)) e.preventDefault();
 });
+window.addEventListener('keyup', (e) => {
+  if (keyboard.handle(e, false)) e.preventDefault();
+});
+window.addEventListener('blur', () => keyboard.releaseAll());
+
+document.getElementById('kbd-layout')!.addEventListener('click', () => api.keyboardSettings());
 
 // ---- touch input -------------------------------------------------------
 

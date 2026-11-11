@@ -21,7 +21,11 @@ const session = new AndroidMirrorSession(serial, path.join(process.cwd(), 'resou
   onClosed: (err) => console.log('closed', err?.message ?? ''),
 });
 session.start().then(
-  () => console.log(`[${Date.now() - t0} ms] started`),
+  () => {
+    console.log(`[${Date.now() - t0} ms] started`);
+    // --kbd: register the virtual keyboard with an empty report (no key is pressed).
+    if (process.argv.includes('--kbd')) session.hidKeyboard(new Uint8Array(8));
+  },
   (e) => { console.error('start failed:', e.message); process.exit(1); },
 );
 setTimeout(() => {

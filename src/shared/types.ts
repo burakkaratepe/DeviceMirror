@@ -58,7 +58,12 @@ export interface MirrorWindowApi {
   touch(action: 0 | 1 | 2, x: number, y: number): void;
   scroll(x: number, y: number, h: number, v: number): void;
   key(keycode: number, metaState?: number): void;
-  text(text: string): void;
+  /** 8-byte HID keyboard report for the device's virtual hardware keyboard. */
+  hid(report: Uint8Array): void;
+  /** Opens the device's physical keyboard layout settings. */
+  keyboardSettings(): void;
+  /** Layout Android uses for the virtual keyboard (undefined until it exists). */
+  keyboardLayout(): Promise<{ id: string; label: string } | undefined>;
   /** Pastes the computer's clipboard into the device. */
   paste(): void;
   setQuality(q: Quality): void;

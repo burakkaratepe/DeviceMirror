@@ -2,7 +2,9 @@
 
 import { BrowserWindow, clipboard, ipcMain, screen, type IpcMainEvent } from 'electron';
 import path from 'node:path';
+import { shell } from './android/adb';
 import { AndroidMirrorSession, QUALITY_PARAMS } from './android/scrcpy';
+import { parseKeyboardLayout } from './keyboardLayout';
 import type { Settings } from './settings';
 import type { Device, MirrorInfo, MirrorResult, MirrorStatus, Quality } from '../shared/types';
 
@@ -47,8 +49,18 @@ export class MirrorManager {
         entryFor(e)?.session?.key(code as number, Number.isInteger(meta) ? (meta as number) : 0);
       }
     });
-    ipcMain.on('mirror:text', (e, text: unknown) => {
-      if (typeof text === 'string' && text.length > 0 && text.length <= 1000) entryFor(e)?.session?.text(text);
+    ipcMain.on('mirror:hid', (e, report: unknown) => {
+      if (report instanceof Uint8Array && report.length === 8) entryFor(e)?.session?.hidKeyboard(report);
+    });
+    ipcMain.on('mirror:keyboardSettings', (e) => entryFor(e)?.session?.openKeyboardSettings());
+    ipcMain.handle('mirror:keyboardLayout', async (e) => {
+      const entry = [...this.entries.values()].find((x) => x.win.webContents === e.sender);
+      if (!entry) return undefined;
+      try {
+        return parseKeyboardLayout(await shell(entry.device.serial, 'dumpsys input'));
+      } catch {
+        return undefined;
+      }
     });
     ipcMain.on('mirror:paste', async (e) => {
       const text = await clipboard.readText(); // async in recent Electron versions

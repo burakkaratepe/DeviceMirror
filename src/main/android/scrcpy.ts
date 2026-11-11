@@ -12,6 +12,18 @@ import type { Quality } from '../../shared/types';
 export const SCRCPY_VERSION = '5.0.1';
 const DEVICE_JAR = `/data/local/tmp/devicemirror-server-${SCRCPY_VERSION}.jar`;
 const DEVICE_NAME_LENGTH = 64;
+const HID_KEYBOARD_ID = 1;
+
+/** Boot-protocol style keyboard: 8 modifier bits, reserved byte, 6 key slots (usages 0x00–0x65), 5 LEDs. */
+const HID_KEYBOARD_REPORT_DESC = Buffer.from([
+  0x05, 0x01, 0x09, 0x06, 0xa1, 0x01, // Usage Page (Generic Desktop), Usage (Keyboard), Collection (Application)
+  0x05, 0x07, 0x19, 0xe0, 0x29, 0xe7, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08, 0x81, 0x02, // modifiers
+  0x75, 0x08, 0x95, 0x01, 0x81, 0x01, // reserved byte
+  0x05, 0x08, 0x19, 0x01, 0x29, 0x05, 0x75, 0x01, 0x95, 0x05, 0x91, 0x02, // LEDs
+  0x75, 0x03, 0x95, 0x01, 0x91, 0x01, // LED padding
+  0x05, 0x07, 0x19, 0x00, 0x29, 0x65, 0x15, 0x00, 0x25, 0x65, 0x75, 0x08, 0x95, 0x06, 0x81, 0x00, // keys
+  0xc0, // End Collection
+]);
 
 export interface QualityParams { shortSide: number; bitRate: number; maxFps: number }
 
@@ -272,27 +284,46 @@ export class AndroidMirrorSession {
     }
   }
 
-  /**
-   * Types text. scrcpy injects it through the device key map, which only
-   * covers ASCII; other characters go through the clipboard and are pasted.
-   */
-  text(s: string) {
-    let ascii = '';
-    const flush = () => {
-      for (let i = 0; i < ascii.length; i += 300) {
-        const body = Buffer.from(ascii.slice(i, i + 300), 'utf8');
-        const b = Buffer.alloc(5);
-        b[0] = 1; // INJECT_TEXT
-        b.writeUInt32BE(body.length, 1);
-        this.send(Buffer.concat([b, body]));
-      }
-      ascii = '';
-    };
-    for (const ch of s) {
-      if (/^[\x20-\x7e]$/.test(ch)) ascii += ch;
-      else { flush(); this.setClipboard(ch, true); }
-    }
-    flush();
+  // ---- virtual hardware keyboard (UHID) --------------------------------
+  //
+  // Text injection (INJECT_TEXT) goes through Android's virtual key map and
+  // drops every non-ASCII character (ç, ş, ğ, ı, ö, ü …). Instead we register
+  // a real HID keyboard on the device and send physical key reports, so
+  // Android applies the keyboard layout chosen for it (e.g. Turkish Q) and
+  // every character, shortcut and app works like with a USB keyboard.
+
+  private keyboardCreated = false;
+
+  /** Creates the keyboard on first use (needs Android 9+ for /dev/uhid). */
+  private ensureKeyboard() {
+    if (this.keyboardCreated) return;
+    this.keyboardCreated = true;
+    const name = Buffer.from('Device Mirror Keyboard', 'utf8');
+    const head = Buffer.alloc(7);
+    head[0] = 12; // UHID_CREATE
+    head.writeUInt16BE(HID_KEYBOARD_ID, 1);
+    head.writeUInt16BE(0, 3); // vendor id
+    head.writeUInt16BE(0, 5); // product id
+    const descLen = Buffer.alloc(2);
+    descLen.writeUInt16BE(HID_KEYBOARD_REPORT_DESC.length);
+    this.send(Buffer.concat([head, Buffer.from([name.length]), name, descLen, HID_KEYBOARD_REPORT_DESC]));
+  }
+
+  /** Sends one 8-byte keyboard input report (modifiers, reserved, 6 keys). */
+  hidKeyboard(report: Uint8Array) {
+    if (report.length !== 8) return;
+    this.ensureKeyboard();
+    const b = Buffer.alloc(5);
+    b[0] = 13; // UHID_INPUT
+    b.writeUInt16BE(HID_KEYBOARD_ID, 1);
+    b.writeUInt16BE(8, 3);
+    this.send(Buffer.concat([b, Buffer.from(report)]));
+  }
+
+  /** Opens Android's physical keyboard settings (to pick e.g. Turkish Q). */
+  openKeyboardSettings() {
+    this.ensureKeyboard();
+    this.send(Buffer.from([15])); // OPEN_HARD_KEYBOARD_SETTINGS
   }
 
   private clipboardSeq = 0n;
