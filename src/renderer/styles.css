@@ -193,7 +193,7 @@ dialog p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
 .chip[aria-pressed="true"] .chip-count { color: var(--accent-text); }
 
 .cap-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 18px; }
-.cap-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 6px; display: flex; flex-direction: column; transition: box-shadow 0.15s, transform 0.15s; }
+.cap-card { position: relative; background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 6px; display: flex; flex-direction: column; transition: box-shadow 0.15s, transform 0.15s; }
 .cap-card:hover { box-shadow: 0 8px 24px rgba(17, 24, 39, 0.08); transform: translateY(-1px); }
 .cap-thumb { position: relative; height: 240px; border: 0; padding: 10px; border-radius: 10px; background: var(--preview); display: flex; align-items: center; justify-content: center; cursor: zoom-in; overflow: hidden; }
 .cap-thumb img { max-height: 100%; max-width: 100%; object-fit: contain; border-radius: 8px; box-shadow: 0 4px 14px rgba(0,0,0,0.18); }
@@ -244,3 +244,9 @@ dialog p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
 .btn-danger-outline svg { width: 15px; height: 15px; }
 .btn-danger { height: 32px; padding: 0 14px; margin-left: 8px; border-radius: 7px; border: 0; background: var(--bad); color: #fff; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .btn-danger:hover { background: color-mix(in srgb, var(--bad) 88%, #000); }
+
+/* Capture card: "show in Finder" button, shown on hover */
+.cap-reveal { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 8px; background: rgba(0, 0, 0, 0.62); color: #fff; cursor: pointer; opacity: 0; transform: translateY(-2px); transition: opacity 0.15s, transform 0.15s, background 0.15s; }
+.cap-reveal svg { width: 15px; height: 15px; }
+.cap-card:hover .cap-reveal, .cap-reveal:focus-visible { opacity: 1; transform: none; }
+.cap-reveal:hover { background: var(--accent); }

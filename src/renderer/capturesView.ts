@@ -12,6 +12,7 @@ const PLAY_BADGE = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.4v
 
 const CAMERA_ICON = '<svg viewBox="0 0 24 24"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l1.2-1.6A1 1 0 0 1 10.1 4h3.8a1 1 0 0 1 .8.4L15.9 6h1.6A2.5 2.5 0 0 1 20 8.5v8a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="12" cy="12.3" r="3.3" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>';
 const VIDEO_ICON = '<svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 10.5 5-3v9l-5-3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+const REVEAL_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 7.5 8.5M11.5 9.5v3a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1h3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const url = (file: string) => `dm-capture://files/${encodeURIComponent(file)}`;
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -38,6 +39,7 @@ export function initCapturesView(api: DeviceMirrorApi, notify: (text: string) =>
   const viewerTitle = $<HTMLHeadingElement>('cap-viewer-title');
   const viewerMeta = $<HTMLParagraphElement>('cap-viewer-meta');
 
+  const revealLabel = api.platform === 'darwin' ? 'Show in Finder' : api.platform === 'win32' ? 'Show in File Explorer' : 'Show in folder';
   let items: Capture[] = [];
   let filter: Filter = 'all';
   /** Device.id to show only that device's captures; undefined = all devices. */
@@ -70,6 +72,13 @@ export function initCapturesView(api: DeviceMirrorApi, notify: (text: string) =>
       thumb.append(b);
     }
     thumb.addEventListener('click', () => open(c));
+    // On hover: open the file's folder with the file selected.
+    const reveal = el('button', 'cap-reveal');
+    reveal.type = 'button';
+    reveal.innerHTML = REVEAL_ICON;
+    reveal.title = revealLabel;
+    reveal.setAttribute('aria-label', revealLabel);
+    reveal.addEventListener('click', () => api.revealCapture(c.id));
     const body = el('div', 'cap-body');
     const name = el('p', 'cap-name', c.deviceName);
     name.title = `${c.platform === 'ios' ? 'UDID' : 'Serial'}: ${c.serial}`;
@@ -87,7 +96,7 @@ export function initCapturesView(api: DeviceMirrorApi, notify: (text: string) =>
     del.setAttribute('aria-label', 'Delete');
     del.addEventListener('click', () => { if (confirm(`Delete this ${c.kind === 'video' ? 'recording' : 'screenshot'}? This cannot be undone.`)) void api.deleteCapture(c.id); });
     actions.append(dl, del);
-    a.append(thumb, body, actions);
+    a.append(thumb, reveal, body, actions);
     return a;
   }
 

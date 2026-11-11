@@ -9,7 +9,7 @@ import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSyn
 import { copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { app, BrowserWindow, dialog, ipcMain, protocol, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell, type WebContents } from 'electron';
 import type { Capture, CaptureKind } from '../shared/types';
 import { fixFragmentedMp4Duration } from './mp4Duration';
 
@@ -125,6 +125,12 @@ export class CaptureStore {
     this.changed();
   }
 
+  /** Opens Finder / Explorer / the file manager with the capture selected. */
+  reveal(id: string) {
+    const item = this.items.find((c) => c.id === id);
+    if (item) shell.showItemInFolder(path.join(this.dir, item.file));
+  }
+
   removeAll() {
     for (const item of this.items) {
       rmSync(path.join(this.dir, item.file), { force: true });
@@ -213,4 +219,5 @@ export function registerCaptureIpc(store: CaptureStore, deps: { deviceFor(wc: We
   ipcMain.handle('captures:download', (_e, id: unknown) => typeof id === 'string' ? store.exportCopy(id, deps.mainWindow()) : false);
   ipcMain.handle('captures:delete', (_e, id: unknown) => { if (typeof id === 'string') store.remove(id); });
   ipcMain.handle('captures:deleteAll', () => store.removeAll());
+  ipcMain.on('captures:reveal', (_e, id: unknown) => { if (typeof id === 'string') store.reveal(id); });
 }

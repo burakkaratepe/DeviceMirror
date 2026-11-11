@@ -16,6 +16,8 @@ const api: DeviceMirrorApi = {
   downloadCapture: (id) => ipcRenderer.invoke('captures:download', id),
   deleteCapture: (id) => ipcRenderer.invoke('captures:delete', id),
   deleteAllCaptures: () => ipcRenderer.invoke('captures:deleteAll'),
+  revealCapture: (id) => ipcRenderer.send('captures:reveal', id),
+  platform: process.platform,
   onShowCaptures: (cb) => { ipcRenderer.on('captures:show', () => cb()); },
 };
 

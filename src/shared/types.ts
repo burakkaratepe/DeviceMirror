@@ -175,6 +175,10 @@ export interface DeviceMirrorApi {
   downloadCapture(id: string): Promise<boolean>;
   deleteCapture(id: string): Promise<void>;
   deleteAllCaptures(): Promise<void>;
+  /** Shows the capture's file in Finder / Explorer / the file manager. */
+  revealCapture(id: string): void;
+  /** 'darwin' | 'win32' | 'linux' (for wording such as "Show in Finder"). */
+  platform: string;
   /** A mirror window asked to show the captures (e.g. its screenshot thumbnail was clicked). */
   onShowCaptures(cb: () => void): void;
 }
