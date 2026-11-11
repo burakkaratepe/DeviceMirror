@@ -134,12 +134,14 @@ button { font: inherit; }
 .q-check svg { width: 16px; height: 16px; }
 @media (prefers-reduced-motion: reduce) { .q-menu { animation: none; } .q-chevron { transition: none; } }
 .mirror-wrap { display: block; }
-.btn-primary { width: 100%; height: 34px; border: 0; border-radius: 7px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.btn-primary { width: 100%; height: 34px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 7px; background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; transition: background 0.15s; }
+.btn-icon { width: 12px; height: 12px; flex: none; transition: transform 0.15s; }
+.btn-primary:hover:not(:disabled) .btn-icon { transform: translateX(2px); }
 .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-primary.is-mirroring { background: color-mix(in srgb, var(--accent) 14%, var(--card)); color: var(--accent-text); box-shadow: inset 0 0 0 1px var(--accent); }
-.btn-primary.is-mirroring::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--ok); vertical-align: 1px; animation: pulse 1.6s ease-in-out infinite; }
+.btn-primary.is-mirroring::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); animation: pulse 1.6s ease-in-out infinite; }
 .btn-primary.is-mirroring:hover { background: color-mix(in srgb, var(--accent) 22%, var(--card)); }
 
 /* Limit dialog */

@@ -35,6 +35,8 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
+const PLAY_ICON = '<svg class="btn-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.4v9.2a.6.6 0 0 0 .92.5l7.1-4.6a.6.6 0 0 0 0-1L5.92 2.9A.6.6 0 0 0 5 3.4z" fill="currentColor"/></svg>';
+
 function card(d: Device, index: number): HTMLElement {
   const c = el('article', `card state-${d.state}`);
   c.dataset.id = d.id;
@@ -64,6 +66,7 @@ function card(d: Device, index: number): HTMLElement {
 
   const mirror = el('button', d.mirroring ? 'btn-primary is-mirroring' : 'btn-primary', d.mirroring ? strings.mirroring : strings.mirror);
   mirror.type = 'button';
+  if (!d.mirroring) mirror.insertAdjacentHTML('beforeend', PLAY_ICON);
   mirror.disabled = !d.mirroring && !!d.mirrorUnavailableReason;
   mirror.addEventListener('click', () => void startMirror(d.id));
   const mWrap = el('span', 'mirror-wrap');
