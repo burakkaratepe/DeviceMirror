@@ -3,7 +3,7 @@
   "productName": "Device Mirror",
   "version": "0.1.0",
   "description": "Mirror and control Android and iOS devices from your desktop.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "author": {
     "name": "Burak Karatepe",
     "email": "burakaratepe@hotmail.com"
@@ -77,6 +77,10 @@
       {
         "from": "THIRD_PARTY_NOTICES.md",
         "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "NOTICE",
+        "to": "NOTICE"
       }
     ],
     "mac": {

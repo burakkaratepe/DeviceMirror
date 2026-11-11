@@ -1,0 +1,8 @@
+Device Mirror
+Copyright 2026 Burak Karatepe
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Packaged builds include third-party components under their own licenses,
+listed in THIRD_PARTY_NOTICES.md (among them scrcpy-server, Copyright (C)
+2018 Genymobile and 2018-2025 Romain Vimont, Apache License 2.0).

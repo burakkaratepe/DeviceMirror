@@ -80,5 +80,6 @@ but may need updates after Apple changes them.
 
 ## License
 
-[MIT](LICENSE) for this project. Bundled third-party components keep their
-own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[Apache License 2.0](LICENSE) — see also [NOTICE](NOTICE). Bundled
+third-party components keep their own licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
