@@ -25,6 +25,7 @@
         </div>
       </div>
       <div id="toast" role="status" hidden></div>
+      <div id="tip" role="tooltip" hidden></div>
       <div id="invite" hidden>
         <div class="invite-card" role="dialog" aria-labelledby="invite-title">
           <div class="invite-icon" aria-hidden="true">
@@ -45,13 +46,13 @@
     <div id="grab" title="Drag to move"></div>
     <footer id="toolbar">
       <div class="win-controls">
-        <button type="button" id="win-close" title="Close" aria-label="Close window"></button>
-        <button type="button" id="win-min" title="Minimize" aria-label="Minimize window"></button>
+        <button type="button" id="win-close" title="Close window" aria-label="Close window"></button>
+        <button type="button" id="win-min" title="Minimize window" aria-label="Minimize window"></button>
       </div>
       <div class="seg" role="radiogroup" aria-label="Quality">
-        <button type="button" role="radio" data-q="low" title="Low · 720p · 30 fps">L</button>
-        <button type="button" role="radio" data-q="medium" title="Medium · 1080p · 60 fps">M</button>
-        <button type="button" role="radio" data-q="high" title="High · native · 60 fps">H</button>
+        <button type="button" role="radio" data-q="low" title="Quality: Low — 720p, 30 fps">L</button>
+        <button type="button" role="radio" data-q="medium" title="Quality: Medium — 1080p, 60 fps">M</button>
+        <button type="button" role="radio" data-q="high" title="Quality: High — full resolution, 60 fps">H</button>
       </div>
       <nav class="nav-keys">
         <button type="button" data-key="4" title="Back" aria-label="Back">
@@ -65,7 +66,7 @@
         </button>
       </nav>
       <div class="right">
-        <button id="rotate" type="button" class="icon-btn" title="Rotate the device" aria-label="Rotate the device a quarter turn counter-clockwise">
+        <button id="rotate" type="button" class="icon-btn" title="Rotate 90° counter-clockwise" aria-label="Rotate the device a quarter turn counter-clockwise">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 10.5A8 8 0 1 1 6 16.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /><path d="M4 5.5v5h5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </button>
         <button id="shot" type="button" class="icon-btn" title="Take a screenshot" aria-label="Take a screenshot">

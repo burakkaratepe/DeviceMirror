@@ -267,3 +267,15 @@ button.link:hover { text-decoration: underline; }
 
 /* No picture yet: the empty canvas would show as a black band */
 #screen:not(.has-frame) { visibility: hidden; }
+
+/* Floating tooltip for the control rail (shown to the left of the rail) */
+#tip {
+  position: fixed; z-index: 20; max-width: 220px; padding: 6px 10px; border-radius: 8px; pointer-events: none;
+  background: rgba(20, 27, 45, 0.97); border: 1px solid rgba(255, 255, 255, 0.1); color: #e5e7eb;
+  font-size: 12px; font-weight: 500; line-height: 1.35; white-space: normal; box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+  opacity: 0; transform: translateX(4px); transition: opacity 0.12s ease, transform 0.12s ease;
+}
+#tip.show { opacity: 1; transform: none; }
+#tip[hidden] { display: none; }
+/* Little arrow pointing at the button */
+#tip::after { content: ""; position: absolute; right: -5px; top: 50%; width: 8px; height: 8px; margin-top: -4px; background: inherit; border-right: 1px solid rgba(255, 255, 255, 0.1); border-top: 1px solid rgba(255, 255, 255, 0.1); transform: rotate(45deg); }

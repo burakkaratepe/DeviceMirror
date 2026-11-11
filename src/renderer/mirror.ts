@@ -6,6 +6,7 @@ import { HidKeyboard } from './hidKeyboard';
 import { initTouchSetup } from './touchSetupUi';
 import { initIosTouch } from './iosTouchUi';
 import { initCaptures } from './captureUi';
+import { initTooltips } from './tooltips';
 import { displaySize, frameToPortrait, orientationFor, placeKey, viewToFrame, type Orientation, type QuarterTurns } from './rotation';
 
 declare global {
@@ -24,6 +25,7 @@ function showToast(text: string) {
   toastTimer = window.setTimeout(() => { toast.hidden = true; }, 5000);
 }
 api.onNotice(showToast);
+initTooltips(document.getElementById('toolbar') as HTMLElement, document.getElementById('tip') as HTMLElement);
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
 const overlay = document.getElementById('overlay') as HTMLDivElement;
