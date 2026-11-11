@@ -6,7 +6,9 @@ body {
   font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", Roboto, Ubuntu, sans-serif;
 }
 #stage { position: relative; flex: 1; min-height: 0; }
-#screen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; cursor: pointer; touch-action: none; }
+/* Room around the screen for the device frame and its side buttons; keep in
+   sync with FRAME_PAD_X / FRAME_PAD_Y in mirrorManager.ts */
+#screen { position: absolute; left: 18px; top: 14px; width: calc(100% - 36px); height: calc(100% - 28px); object-fit: contain; cursor: pointer; touch-action: none; }
 #overlay {
   position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   background: rgba(11, 14, 20, 0.82); text-align: center; padding: 24px; transition: opacity 0.2s;
@@ -167,3 +169,27 @@ button.link:hover { text-decoration: underline; }
 .drag-trail.done { opacity: 0; }
 .drag-trail path { fill: none; stroke: rgba(107, 179, 163, 0.85); stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.45)); }
 .drag-trail circle { fill: #fff; stroke: var(--accent); stroke-width: 3; filter: drop-shadow(0 0 4px rgba(0, 0, 0, 0.5)); }
+
+/* ---- device frame with working side buttons ------------------------------ */
+#bezel {
+  position: absolute; z-index: 0; box-sizing: border-box; pointer-events: none;
+  background: linear-gradient(145deg, #2a2d34, #15171c 55%, #24272e);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.07), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+#bezel[hidden] { display: none; }
+#screen { z-index: 1; }
+.side-btn {
+  position: absolute; width: 5px; padding: 0; border: 0; border-radius: 2px; pointer-events: auto; cursor: pointer;
+  background: linear-gradient(90deg, #5b616d, #3a3f48); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 1px 3px rgba(0, 0, 0, 0.5);
+  transition: transform 0.12s ease, filter 0.12s ease;
+}
+/* Buttons stick out of the frame; hover nudges them in a hair, a press pushes them in. */
+.side-btn.left { left: -4px; }
+.side-btn.right { right: -4px; }
+.side-btn.left:hover { transform: translateX(0.6px); filter: brightness(1.15); }
+.side-btn.right:hover { transform: translateX(-0.6px); filter: brightness(1.15); }
+.side-btn.left:active, .side-btn.left.pressed { transform: translateX(2.5px); transition-duration: 0.05s; filter: brightness(0.9); }
+.side-btn.right:active, .side-btn.right.pressed { transform: translateX(-2.5px); transition-duration: 0.05s; filter: brightness(0.9); }
+.side-btn.locked { opacity: 0.45; cursor: not-allowed; }
+.side-btn[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .side-btn { transition: none; } }

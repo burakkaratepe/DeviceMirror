@@ -123,6 +123,13 @@ export class IosTouchClient {
 
   home() { return this.enqueue(4, 0, Buffer.alloc(0)); }
 
+  /** Side buttons: 'volumeUp' | 'volumeDown' | 'lock'. */
+  button(which: 'volumeUp' | 'volumeDown' | 'lock') {
+    const p = Buffer.alloc(12);
+    p.writeFloatLE(which === 'volumeUp' ? 2 : which === 'volumeDown' ? 3 : 100, 0);
+    return this.enqueue(5, 0, p);
+  }
+
   close() {
     if (this.closed) return;
     this.closed = true;

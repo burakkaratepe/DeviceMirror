@@ -16,6 +16,8 @@ export const MAX_MIRRORS = 2;
 const controlOf = (e: { session?: AndroidMirrorSession | IosMirrorSession } | undefined) =>
   e?.session instanceof AndroidMirrorSession ? e.session : undefined;
 const TOOLBAR_HEIGHT = 56; // keep in sync with mirror.css
+const FRAME_PAD_X = 36; // room for the device frame and side buttons (mirror.css #screen)
+const FRAME_PAD_Y = 28;
 const QUALITIES: Quality[] = ['low', 'medium', 'high'];
 
 interface Entry {
@@ -99,6 +101,9 @@ export class MirrorManager {
     });
     ipcMain.on('ios:text', (e, text: unknown) => { if (typeof text === 'string' && text) void touchOf(e)?.text(text); });
     ipcMain.on('ios:home', (e) => void touchOf(e)?.home());
+    ipcMain.on('ios:button', (e, which: unknown) => {
+      if (which === 'volumeUp' || which === 'volumeDown' || which === 'lock') void touchOf(e)?.button(which);
+    });
     ipcMain.on('mirror:copy', (_e, text: unknown) => { if (typeof text === 'string' && text.length < 200) clipboard.writeText(text); });
     ipcMain.on('mirror:retry', (e) => {
       const entry = entryFor(e);
@@ -246,7 +251,7 @@ export class MirrorManager {
     const work = screen.getPrimaryDisplay().workAreaSize;
     const h = Math.min(860, work.height - 60);
     const ratio = device.preview ? device.preview.width / device.preview.height : 9 / 19.5;
-    const w = Math.round((h - TOOLBAR_HEIGHT) * ratio);
+    const w = Math.round((h - TOOLBAR_HEIGHT - FRAME_PAD_Y) * ratio) + FRAME_PAD_X;
     const win = new BrowserWindow({
       width: Math.max(w, 300),
       height: h,
@@ -275,13 +280,14 @@ export class MirrorManager {
     if (e.win.isDestroyed()) return;
     const rotated = !e.size || (e.size.width > e.size.height) !== (width > height);
     e.size = { width, height };
-    e.win.setAspectRatio(width / height, { width: 0, height: TOOLBAR_HEIGHT });
+    e.win.setAspectRatio(width / height, { width: FRAME_PAD_X, height: TOOLBAR_HEIGHT + FRAME_PAD_Y });
     if (!rotated || e.win.isMaximized() || e.win.isFullScreen()) return;
     const [, curH] = e.win.getContentSize();
     const work = screen.getDisplayMatching(e.win.getBounds()).workAreaSize;
-    let videoH = Math.min(curH - TOOLBAR_HEIGHT, work.height - 60 - TOOLBAR_HEIGHT);
+    const extraH = TOOLBAR_HEIGHT + FRAME_PAD_Y;
+    let videoH = Math.min(curH - extraH, work.height - 60 - extraH);
     let videoW = Math.round((videoH * width) / height);
-    if (videoW > work.width - 40) { videoW = work.width - 40; videoH = Math.round((videoW * height) / width); }
-    e.win.setContentSize(Math.max(videoW, 260), videoH + TOOLBAR_HEIGHT);
+    if (videoW > work.width - 40 - FRAME_PAD_X) { videoW = work.width - 40 - FRAME_PAD_X; videoH = Math.round((videoW * height) / width); }
+    e.win.setContentSize(Math.max(videoW + FRAME_PAD_X, 260), videoH + extraH);
   }
 }

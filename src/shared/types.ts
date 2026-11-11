@@ -99,6 +99,7 @@ export interface MirrorWindowApi {
   iosGesture(points: { x: number; y: number; t: number }[]): void;
   iosText(text: string): void;
   iosHome(): void;
+  iosButton(which: 'volumeUp' | 'volumeDown' | 'lock'): void;
   notice?(text: string): void;
 }
 

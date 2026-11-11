@@ -17,6 +17,7 @@
 //   op 2 gesture  payload count × (f32 x, f32 y, f32 seconds since start)
 //   op 3 text     payload count bytes of UTF-8
 //   op 4 home
+//   op 5 hardware button  payload f32 button (2 volume up, 3 volume down, 100 lock)
 //   op 6 ping
 //   x/y are normalized 0…1 of the portrait screen.
 // Device → Mac:
@@ -153,7 +154,7 @@ static BOOL synthesize(XCPointerEventPath *path) {
     double received = nowMicros();
     size_t payloadSize = 0;
     switch (h.op) {
-      case 1: payloadSize = 12; break;
+      case 1: case 5: payloadSize = 12; break;
       case 2: payloadSize = (size_t)h.count * 12; break;
       case 3: payloadSize = h.count; break;
       default: payloadSize = 0;
@@ -208,6 +209,20 @@ static BOOL synthesize(XCPointerEventPath *path) {
     case 4:
       [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonHome];
       return YES;
+    case 5: { // side buttons
+      int button = (int)f[0];
+      if (button == 100) { // lock / wake: private XCUIDevice method (no public API)
+        SEL lock = NSSelectorFromString(@"pressLockButton");
+        if (![XCUIDevice.sharedDevice respondsToSelector:lock]) return NO;
+        ((void (*)(id, SEL))[XCUIDevice.sharedDevice methodForSelector:lock])(XCUIDevice.sharedDevice, lock);
+        return YES;
+      }
+#if !TARGET_OS_SIMULATOR
+      if (button == 2) { [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeUp]; return YES; }
+      if (button == 3) { [XCUIDevice.sharedDevice pressButton:XCUIDeviceButtonVolumeDown]; return YES; }
+#endif
+      return NO;
+    }
     default: // ping
       return YES;
   }

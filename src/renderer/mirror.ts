@@ -266,3 +266,67 @@ api.onTouch((on) => {
   btn.title = on ? 'Touch control is on' : 'Enable touch control';
   if (on) (document.getElementById('invite') as HTMLDivElement).hidden = true;
 });
+
+// ---- device frame and side buttons -----------------------------------------
+//
+// A thin phone frame drawn around the video, with power and volume buttons
+// that really work (Android: key events; iOS: through the touch runner).
+
+const bezel = document.getElementById('bezel') as HTMLDivElement;
+const sideButtons = [...bezel.querySelectorAll<HTMLButtonElement>('.side-btn')];
+
+/** Button placement per platform, as fractions of the frame height. */
+const BUTTON_LAYOUT: Record<'android' | 'ios', Record<string, { side: 'left' | 'right'; top: number; height: number }>> = {
+  ios: { volumeUp: { side: 'left', top: 0.25, height: 0.075 }, volumeDown: { side: 'left', top: 0.345, height: 0.075 }, power: { side: 'right', top: 0.28, height: 0.11 } },
+  android: { volumeUp: { side: 'right', top: 0.19, height: 0.06 }, volumeDown: { side: 'right', top: 0.26, height: 0.06 }, power: { side: 'right', top: 0.36, height: 0.075 } },
+};
+
+function layoutFrame() {
+  if (!frameW || !frameH) { bezel.hidden = true; return; }
+  const box = canvas.getBoundingClientRect();
+  const st = stage.getBoundingClientRect();
+  const scale = Math.min(box.width / frameW, box.height / frameH);
+  const vw = frameW * scale, vh = frameH * scale;
+  const left = box.left - st.left + (box.width - vw) / 2;
+  const top = box.top - st.top + (box.height - vh) / 2;
+  const portrait = vh >= vw;
+  // Rounded screen corners like the real panel; older home-button iPhones are square.
+  const homeButtonIphone = platform === 'ios' && frameH / frameW < 1.9 && portrait;
+  const radius = Math.min(vw, vh) * (platform === 'ios' ? (homeButtonIphone ? 0.015 : 0.12) : 0.075);
+  const border = Math.max(6, Math.min(vw, vh) * 0.035);
+  const cl = left - (box.left - st.left), ct = top - (box.top - st.top);
+  canvas.style.clipPath = `inset(${ct}px ${box.width - cl - vw}px ${box.height - ct - vh}px ${cl}px round ${radius}px)`;
+  Object.assign(bezel.style, {
+    left: `${left - border}px`, top: `${top - border}px`, width: `${vw + 2 * border}px`, height: `${vh + 2 * border}px`,
+    borderRadius: `${radius + border}px`,
+  });
+  bezel.hidden = false;
+  const layout = BUTTON_LAYOUT[platform];
+  for (const b of sideButtons) {
+    const spec = layout[b.dataset.btn!];
+    b.hidden = !portrait; // the frame turns with the device; buttons are only placed for portrait
+    b.className = `side-btn ${spec.side}`;
+    b.style.top = `${spec.top * (vh + 2 * border)}px`;
+    b.style.height = `${spec.height * (vh + 2 * border)}px`;
+    const locked = platform === 'ios' && !document.body.classList.contains('touch-on');
+    b.classList.toggle('locked', locked);
+    b.title = locked ? 'Enable touch control to use the buttons' : b.getAttribute('aria-label')!;
+  }
+}
+new ResizeObserver(layoutFrame).observe(stage);
+api.onVideo((v) => { if (v.type === 'size') requestAnimationFrame(layoutFrame); });
+api.onTouch(() => layoutFrame());
+
+const ANDROID_KEYS: Record<string, number> = { power: 26, volumeUp: 24, volumeDown: 25 };
+for (const b of sideButtons) {
+  b.addEventListener('mousedown', (e) => e.preventDefault()); // keep keyboard focus on the device
+  b.addEventListener('click', () => {
+    if (b.classList.contains('locked')) return;
+    const which = b.dataset.btn!;
+    if (platform === 'android') api.key(ANDROID_KEYS[which]);
+    else api.iosButton(which === 'power' ? 'lock' : (which as 'volumeUp' | 'volumeDown'));
+    // Keyboard / fast clicks still show the press.
+    b.classList.add('pressed');
+    setTimeout(() => b.classList.remove('pressed'), 110);
+  });
+}

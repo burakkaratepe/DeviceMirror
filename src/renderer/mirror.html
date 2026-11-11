@@ -8,6 +8,11 @@
   </head>
   <body>
     <div id="stage">
+      <div id="bezel" hidden aria-hidden="false">
+        <button type="button" class="side-btn" data-btn="volumeUp" title="Volume up" aria-label="Volume up"></button>
+        <button type="button" class="side-btn" data-btn="volumeDown" title="Volume down" aria-label="Volume down"></button>
+        <button type="button" class="side-btn" data-btn="power" title="Power / lock" aria-label="Power"></button>
+      </div>
       <canvas id="screen" aria-label="Device screen"></canvas>
       <div id="layout-bar" role="status" hidden>
         <span id="layout-text"></span>
