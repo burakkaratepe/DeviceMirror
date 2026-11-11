@@ -51,7 +51,15 @@ export type MirrorStatus =
   | { state: 'live' }
   | { state: 'error'; message: string };
 
-export interface MirrorInfo { deviceId: string; name: string; platform: Platform; quality: Quality }
+export interface MirrorInfo { deviceId: string; serial: string; name: string; platform: Platform; quality: Quality }
+
+/** What a saved / just-checked signing identity looks like to the user. */
+export interface StoredIdentitySummary { certificate: string; team: string; profile: string; expires: string }
+
+export interface SigningResult { ok: boolean; problems: string[]; identity?: StoredIdentitySummary }
+
+export type SetupStepId = 'trust' | 'developerMode' | 'sign' | 'install' | 'launch';
+export interface SetupStep { id: SetupStepId; state: 'pending' | 'running' | 'done' | 'error'; detail?: string }
 
 export interface MirrorWindowApi {
   info(): Promise<MirrorInfo>;
@@ -71,6 +79,13 @@ export interface MirrorWindowApi {
   paste(): void;
   setQuality(q: Quality): void;
   retry(): void;
+  // iOS touch control setup (Phase 4 UI; Phase 5 makes the steps real)
+  savedIdentity(): Promise<StoredIdentitySummary | undefined>;
+  pickFile(kind: 'p12' | 'profile'): Promise<string | undefined>;
+  checkSigning(p12Path: string, password: string, profilePath: string): Promise<SigningResult>;
+  runSetup(): Promise<void>;
+  onSetupStep(cb: (s: SetupStep) => void): void;
+  copyText(text: string): void;
 }
 
 export interface Preview {

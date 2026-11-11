@@ -1,6 +1,6 @@
 // Owns mirror windows and their device sessions; enforces the concurrent limit.
 
-import { BrowserWindow, clipboard, ipcMain, screen, type IpcMainEvent } from 'electron';
+import { BrowserWindow, clipboard, ipcMain, screen, type IpcMainEvent, type WebContents } from 'electron';
 import path from 'node:path';
 import { shell } from './android/adb';
 import { AndroidMirrorSession, QUALITY_PARAMS, type SessionEvents } from './android/scrcpy';
@@ -77,6 +77,7 @@ export class MirrorManager {
       const entry = entryFor(e);
       if (entry && QUALITIES.includes(q as Quality)) this.setQuality(entry.device.id, q as Quality);
     });
+    ipcMain.on('mirror:copy', (_e, text: unknown) => { if (typeof text === 'string' && text.length < 200) clipboard.writeText(text); });
     ipcMain.on('mirror:retry', (e) => {
       const entry = entryFor(e);
       if (entry) void this.startSession(entry);
@@ -84,6 +85,10 @@ export class MirrorManager {
   }
 
   isMirroring(id: string): boolean { return this.entries.has(id); }
+
+  /** The device / window behind a mirror window's webContents (for IPC handlers). */
+  deviceFor(wc: WebContents): Device | undefined { return [...this.entries.values()].find((x) => x.win.webContents === wc)?.device; }
+  windowFor(wc: WebContents): BrowserWindow | undefined { return [...this.entries.values()].find((x) => x.win.webContents === wc)?.win; }
 
   open(device: Device, replaceId?: string): MirrorResult {
     const existing = this.entries.get(device.id);
@@ -148,7 +153,7 @@ export class MirrorManager {
   }
 
   private info(e: Entry): MirrorInfo {
-    return { deviceId: e.device.id, name: e.device.name, platform: e.device.platform, quality: this.deps.settings.quality(e.device.id) };
+    return { deviceId: e.device.id, serial: e.device.serial, name: e.device.name, platform: e.device.platform, quality: this.deps.settings.quality(e.device.id) };
   }
 
   private send(e: Entry, channel: string, payload: unknown) {

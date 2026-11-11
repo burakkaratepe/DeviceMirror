@@ -3,6 +3,7 @@ import path from 'node:path';
 import { findAdb } from './android/adb';
 import { DeviceManager } from './deviceManager';
 import { findIosHelper, iosSnapshot, shutdownIosHelpers } from './ios/iosCapture';
+import { registerTouchSetup, SigningStore } from './ios/touchSetup';
 import { MirrorManager } from './mirrorManager';
 import { loadAndroidModels } from './modelNames';
 import { Settings } from './settings';
@@ -147,6 +148,11 @@ app.whenReady().then(() => {
     findDevice: (id) => manager!.find(id),
     onChange: pushSnapshot,
   });
+  registerTouchSetup(
+    new SigningStore(path.join(app.getPath('userData'), 'signing')),
+    (wc) => mirrors!.deviceFor(wc),
+    (wc) => mirrors!.windowFor(wc),
+  );
   manager.onSnapshot((s) => {
     mirrors!.syncDevices(s.devices);
     pushSnapshot();

@@ -2,7 +2,7 @@
 
 Mirror and control Android and iOS devices from macOS, Windows and Linux.
 
-Status: **Phase 3** — live device list (Android + iOS) with marketing names and screenshot previews; Android mirroring with touch + keyboard; iOS mirroring on macOS (view-only until Phase 4–5). One window per device, up to 2 at a time, Low/Medium/High quality per device.
+Status: **Phase 4** — live device list (Android + iOS) with marketing names and screenshot previews; Android mirroring with touch + keyboard; iOS mirroring on macOS with the touch-control setup flow (invite, signing check, encrypted storage; runner arrives in Phase 5). One window per device, up to 2 at a time, Low/Medium/High quality per device.
 
 ## Development
 

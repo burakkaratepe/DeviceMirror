@@ -3,6 +3,7 @@
 
 import type { MirrorStatus, MirrorVideo, MirrorWindowApi, Quality } from '../shared/types';
 import { HidKeyboard } from './hidKeyboard';
+import { initTouchSetup } from './touchSetupUi';
 
 declare global {
   interface Window { mirror: MirrorWindowApi }
@@ -85,7 +86,16 @@ function showStatus(s: MirrorStatus) {
   retryBtn.hidden = s.state !== 'error';
   overlayText.textContent = s.state === 'error' ? s.message : `Connecting to ${deviceName}…`;
 }
-api.onStatus(showStatus);
+let serial = '';
+const touchSetup = initTouchSetup(api, () => serial);
+let isLive = false;
+// Status and device info arrive independently; invite once both say "live iOS".
+const maybeInvite = () => { if (isLive && platform === 'ios') touchSetup.onLive(); };
+api.onStatus((s) => {
+  showStatus(s);
+  isLive = s.state === 'live';
+  maybeInvite();
+});
 retryBtn.addEventListener('click', () => api.retry());
 
 // ---- quality -----------------------------------------------------------
@@ -106,15 +116,17 @@ let platform: 'android' | 'ios' = 'android';
 /** iOS windows are view-only until touch control is enabled (Phase 4/5). */
 const controllable = () => platform === 'android';
 
-function applyInfo(i: { name: string; platform: 'android' | 'ios'; quality: Quality }) {
+function applyInfo(i: { name: string; serial: string; platform: 'android' | 'ios'; quality: Quality }) {
   deviceName = i.name;
   platform = i.platform;
+  serial = i.serial;
+  maybeInvite();
   document.body.classList.toggle('platform-ios', i.platform === 'ios');
   document.title = i.name;
   showQuality(i.quality);
 }
 api.onInfo(applyInfo);
-void api.info().then((i) => { if (i) { applyInfo(i); showStatus({ state: 'connecting' }); } });
+void api.info().then((i) => { if (i) { applyInfo(i); if (!isLive) showStatus({ state: 'connecting' }); } });
 
 // ---- navigation keys ---------------------------------------------------
 

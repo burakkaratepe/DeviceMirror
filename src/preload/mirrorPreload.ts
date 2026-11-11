@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { MirrorInfo, MirrorStatus, MirrorVideo, MirrorWindowApi, Quality } from '../shared/types';
+import type { MirrorInfo, MirrorStatus, MirrorVideo, MirrorWindowApi, Quality, SetupStep } from '../shared/types';
 
 const api: MirrorWindowApi = {
   info: () => ipcRenderer.invoke('mirror:info'),
@@ -15,6 +15,12 @@ const api: MirrorWindowApi = {
   paste: () => ipcRenderer.send('mirror:paste'),
   setQuality: (q: Quality) => ipcRenderer.send('mirror:quality', q),
   retry: () => ipcRenderer.send('mirror:retry'),
+  savedIdentity: () => ipcRenderer.invoke('touch:saved'),
+  pickFile: (kind) => ipcRenderer.invoke('touch:pick', kind),
+  checkSigning: (p12, pw, profile) => ipcRenderer.invoke('touch:check', p12, pw, profile),
+  runSetup: () => ipcRenderer.invoke('touch:setup'),
+  onSetupStep: (cb) => { ipcRenderer.on('touch:step', (_e, s: SetupStep) => cb(s)); },
+  copyText: (text) => ipcRenderer.send('mirror:copy', text),
 };
 
 contextBridge.exposeInMainWorld('mirror', api);
