@@ -127,3 +127,13 @@ input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .steps li[data-state="done"] .step-icon::after { content: ""; position: absolute; left: 4.5px; top: 1.5px; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 .steps li[data-state="error"] .step-icon { border-color: #ef4444; background: #ef4444; }
 .steps li[data-state="error"] .step-text small { color: #fca5a5; }
+
+/* Very light bounce on the toolbar's hand icon while the invite is shown */
+#touch-enable.nudge svg { animation: nudge 2.4s ease-in-out infinite; color: var(--accent); }
+@keyframes nudge {
+  0%, 60%, 100% { transform: translateY(0); }
+  70% { transform: translateY(-2.5px); }
+  80% { transform: translateY(0); }
+  88% { transform: translateY(-1px); }
+}
+@media (prefers-reduced-motion: reduce) { #touch-enable.nudge svg { animation: none; } }

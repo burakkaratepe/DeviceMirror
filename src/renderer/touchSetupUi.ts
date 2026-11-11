@@ -22,20 +22,26 @@ export function initTouchSetup(api: MirrorWindowApi, getSerial: () => string) {
   // Shown once per window when the iOS picture first arrives. A click outside
   // the card dismisses it; the toolbar button reopens the flow at any time.
 
-  const showInvite = () => { invite.hidden = false; $<HTMLButtonElement>('invite-enable').focus(); };
+  const toolbarButton = $<HTMLButtonElement>('touch-enable');
+  /** While the invite is up, the toolbar's hand icon gently bounces to show where the flow lives later. */
+  const setInvite = (visible: boolean) => {
+    invite.hidden = !visible;
+    toolbarButton.classList.toggle('nudge', visible);
+  };
+  const showInvite = () => { setInvite(true); $<HTMLButtonElement>('invite-enable').focus(); };
   invite.addEventListener('pointerdown', (e) => {
-    if (!(e.target as HTMLElement).closest('.invite-card')) invite.hidden = true;
+    if (!(e.target as HTMLElement).closest('.invite-card')) setInvite(false);
   });
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !invite.hidden) invite.hidden = true; });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !invite.hidden) setInvite(false); });
 
   async function start() {
-    invite.hidden = true;
+    setInvite(false);
     const saved = await api.savedIdentity();
     if (saved) runSetup(saved);
     else openSigning();
   }
   $<HTMLButtonElement>('invite-enable').addEventListener('click', () => void start());
-  $<HTMLButtonElement>('touch-enable').addEventListener('click', () => void start());
+  toolbarButton.addEventListener('click', () => void start());
 
   // ---- signing dialog --------------------------------------------------
 
