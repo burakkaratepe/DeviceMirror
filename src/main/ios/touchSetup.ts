@@ -187,12 +187,21 @@ export function registerTouchSetup(deps: TouchSetupDeps) {
     const udid = d.serial;
     const { runner } = deps;
 
+    // Runner still running (touch was only switched off): just reconnect.
+    if (runner.isRunning(udid)) {
+      try {
+        send({ id: 'launch', state: 'running' });
+        await deps.onRunnerReady(d.id, udid);
+        send({ id: 'launch', state: 'done', detail: 'Touch control is on.' });
+        return;
+      } catch { /* fall through to a fresh start */ }
+    }
+
     send({ id: 'developerMode', state: 'running' });
     const devMode = await runner.developerMode(udid);
     if (devMode === false) return fail('developerMode', 'Turn on Developer Mode: Settings → Privacy & Security → Developer Mode. The device restarts once.');
     send({ id: 'developerMode', state: 'done', detail: devMode === undefined ? 'Could not check; continuing.' : undefined });
 
-    send({ id: 'sign', state: 'running', detail: 'Preparing the helper app. The first time takes about a minute.' });
     const xcode = await runner.xcodeVersion();
     if (!xcode) return fail('sign', 'Touch control currently needs Xcode on this Mac. Install Xcode from the App Store and try again.');
     const identity = await store.findFor(udid);
@@ -206,6 +215,7 @@ export function registerTouchSetup(deps: TouchSetupDeps) {
       send({ id: 'sign', state: 'done', detail: 'Already prepared.' });
       send({ id: 'install', state: 'done', detail: 'Already on the device.' });
     } else {
+      send({ id: 'sign', state: 'running', detail: xctestrun ? undefined : 'Preparing the helper app. The first time takes about a minute.' });
       try {
         if (!xctestrun) {
           const built = await runner.build(xcode);

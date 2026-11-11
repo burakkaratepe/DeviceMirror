@@ -163,7 +163,17 @@ button.link:hover { text-decoration: underline; }
 /* iOS with touch control on: only the Home key applies */
 .platform-ios.touch-on .nav-keys { visibility: visible; }
 .platform-ios .nav-keys [data-key="4"], .platform-ios .nav-keys [data-key="187"] { display: none; }
-.platform-ios.touch-on #touch-enable { color: var(--accent); }
+/* Touch toggle: grey off, green on, spinner while starting */
+#touch-enable { position: relative; }
+#touch-enable[data-state="on"] { color: var(--accent); background: rgba(107, 179, 163, 0.16); }
+#touch-enable[data-state="on"]:hover { color: #8fd0c1; background: rgba(107, 179, 163, 0.24); }
+#touch-enable[data-state="starting"] { color: var(--accent); cursor: progress; }
+#touch-enable[data-state="starting"] svg { opacity: 0.45; }
+#touch-enable[data-state="starting"]::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 50%;
+  border: 2px solid rgba(107, 179, 163, 0.2); border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
 
 /* Instant feedback where the user clicked (the device reacts a moment later) */
 .tap-ripple {

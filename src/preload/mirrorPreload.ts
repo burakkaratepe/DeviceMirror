@@ -30,6 +30,7 @@ const api: MirrorWindowApi = {
   iosText: (text) => ipcRenderer.send('ios:text', text),
   iosHome: () => ipcRenderer.send('ios:home'),
   iosButton: (which) => ipcRenderer.send('ios:button', which),
+  iosTouchOff: () => ipcRenderer.send('ios:touchOff'),
 };
 
 contextBridge.exposeInMainWorld('mirror', api);

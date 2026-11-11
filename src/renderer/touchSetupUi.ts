@@ -34,14 +34,37 @@ export function initTouchSetup(api: MirrorWindowApi, getSerial: () => string) {
   });
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !invite.hidden) setInvite(false); });
 
+  // ---- toolbar toggle --------------------------------------------------
+  // Grey = off, green = on, spinner = starting. Clicking while on switches
+  // touch off (the runner keeps running on the device, so switching back on
+  // is instant). Starting runs quietly; the checklist only opens when there is
+  // real work to watch (signing, installing) or something needs the user.
+
+  type TouchState = 'off' | 'starting' | 'on';
+  let state: TouchState = 'off';
+  let quiet = false;
+  const setState = (next: TouchState) => {
+    state = next;
+    toolbarButton.dataset.state = next;
+    const label = next === 'on' ? 'Touch control is on — click to turn off' : next === 'starting' ? 'Starting touch control…' : 'Turn on touch control';
+    toolbarButton.title = label;
+    toolbarButton.setAttribute('aria-label', label);
+    toolbarButton.setAttribute('aria-pressed', String(next === 'on'));
+  };
+  setState('off');
+
   async function start() {
     setInvite(false);
+    if (state !== 'off') return;
     const saved = await api.savedIdentity();
-    if (saved) runSetup(saved);
+    if (saved) runSetup(saved, true);
     else openSigning();
   }
   $<HTMLButtonElement>('invite-enable').addEventListener('click', () => void start());
-  toolbarButton.addEventListener('click', () => void start());
+  toolbarButton.addEventListener('click', () => {
+    if (state === 'on') { setState('off'); api.iosTouchOff(); }
+    else if (state === 'off') void start();
+  });
 
   // ---- signing dialog --------------------------------------------------
   // Profile first. On macOS, when the profile's certificate is already in the
@@ -141,7 +164,7 @@ export function initTouchSetup(api: MirrorWindowApi, getSerial: () => string) {
 
   // ---- setup checklist -------------------------------------------------
 
-  function runSetup(identity?: StoredIdentitySummary) {
+  function runSetup(identity: StoredIdentitySummary | undefined, background = false) {
     $<HTMLElement>('setup-identity').textContent = identity
       ? `${identity.certificate} · ${identity.team} · valid until ${identity.expires}`
       : '';
@@ -149,19 +172,34 @@ export function initTouchSetup(api: MirrorWindowApi, getSerial: () => string) {
       li.dataset.state = 'pending';
       (li.querySelector('small') as HTMLElement).textContent = '';
     }
-    setup.showModal();
-    void api.runSetup();
+    quiet = background;
+    if (!background && !setup.open) setup.showModal();
+    setState('starting');
+    void api.runSetup().finally(() => {
+      quiet = false;
+      if (state === 'starting') setState('off'); // failed or cancelled
+    });
   }
   api.onSetupStep((s: SetupStep) => {
     const li = setup.querySelector<HTMLLIElement>(`.steps li[data-step="${s.id}"]`);
     if (!li) return;
     li.dataset.state = s.state;
     (li.querySelector('small') as HTMLElement).textContent = s.detail ?? '';
+    // Quiet start: show the checklist once there is real work or a problem.
+    const work = s.state === 'running' && (s.id === 'sign' || s.id === 'install');
+    if (quiet && (work || s.state === 'error') && !setup.open) setup.showModal();
+    // Everything went through: close the checklist on its own shortly after.
+    if (s.id === 'launch' && s.state === 'done' && setup.open) setTimeout(() => setup.close(), 900);
   });
   $<HTMLButtonElement>('setup-close').addEventListener('click', () => setup.close());
   $<HTMLButtonElement>('setup-change').addEventListener('click', () => { setup.close(); openSigning(); });
 
   return {
+    /** The runner connected (true) or dropped / was switched off (false). */
+    setTouch(on: boolean) {
+      if (on) setState('on');
+      else if (state === 'on') setState('off');
+    },
     /** Call when the iOS picture first appears. */
     onLive() {
       if (invited) return;

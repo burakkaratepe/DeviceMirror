@@ -101,6 +101,8 @@ export interface MirrorWindowApi {
   iosText(text: string): void;
   iosHome(): void;
   iosButton(which: 'volumeUp' | 'volumeDown' | 'lock'): void;
+  /** Disconnects touch control; the runner keeps running for a quick restart. */
+  iosTouchOff(): void;
   notice?(text: string): void;
 }
 

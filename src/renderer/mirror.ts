@@ -262,8 +262,7 @@ const iosTouch = initIosTouch(api, canvas, stage, toFrame, () => ({ w: frameW, h
 api.onTouch((on) => {
   iosTouch.setEnabled(on && platform === 'ios');
   document.body.classList.toggle('touch-on', on);
-  const btn = document.getElementById('touch-enable') as HTMLButtonElement;
-  btn.title = on ? 'Touch control is on' : 'Enable touch control';
+  touchSetup.setTouch(on);
   if (on) (document.getElementById('invite') as HTMLDivElement).hidden = true;
 });
 

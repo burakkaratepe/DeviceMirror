@@ -104,6 +104,16 @@ export class MirrorManager {
     ipcMain.on('ios:button', (e, which: unknown) => {
       if (which === 'volumeUp' || which === 'volumeDown' || which === 'lock') void touchOf(e)?.button(which);
     });
+    // Touch switched off by the user: drop the connection, keep the runner
+    // running on the device so switching back on is instant.
+    ipcMain.on('ios:touchOff', (e) => {
+      const entry = entryFor(e);
+      if (!entry) return;
+      const client = entry.touch;
+      entry.touch = undefined;
+      client?.close();
+      this.send(entry, 'mirror:touch', false);
+    });
     ipcMain.on('mirror:window', (e, action: unknown) => {
       const win = entryFor(e)?.win;
       if (!win) return;
