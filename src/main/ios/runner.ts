@@ -128,6 +128,10 @@ export class IosRunnerManager {
     ]);
     const built = find();
     if (!built) throw new RunnerError('Building the touch helper failed.');
+    // Builds for older runner sources or Xcode versions are no longer used.
+    for (const f of readdirSync(this.cacheDir)) {
+      if (f.startsWith('build-') && path.join(this.cacheDir, f) !== dir) rmSync(path.join(this.cacheDir, f), { recursive: true, force: true });
+    }
     return built;
   }
 
