@@ -3,6 +3,10 @@
 Mirror and control Android and iOS devices connected over USB, from a small
 desktop app.
 
+<p align="center">
+  <img src="docs/images/devices.png" alt="Device list with an iPhone and an Android phone" width="800">
+</p>
+
 - **Device list** with live plug/unplug tracking, retail device names and
   screenshots of each screen (refreshed while the list is on screen).
 - **Android:** mirroring with mouse and keyboard control (any keyboard layout,
@@ -18,7 +22,28 @@ desktop app.
 - Up to 2 devices at a time, one window each, Low / Medium / High quality per
   device.
 
-Status: macOS is the main platform today. Android mirroring is written to run
+## Screenshots
+
+<p align="center">
+  <img src="docs/images/mirror-ios.png" alt="iPhone mirror window with its control rail" width="280">
+  &nbsp;&nbsp;
+  <img src="docs/images/mirror-android.png" alt="Android mirror window with its control rail" width="280">
+</p>
+<p align="center"><em>One window per device: the device frame with working side keys, and a control rail for quality, navigation, rotate, screenshot, recording and touch.</em></p>
+
+<p align="center">
+  <img src="docs/images/rotate.png" alt="Android phone turned to landscape with an app that follows" width="640">
+</p>
+<p align="center"><em>Rotate either way; apps that support landscape follow, and clicks land where you point.</em></p>
+
+<p align="center">
+  <img src="docs/images/captures.png" alt="Captures page with screenshots and a recording, filtered by type and device" width="800">
+</p>
+<p align="center"><em>Screenshots and recordings collect on the Captures page, filterable by type and device.</em></p>
+
+## Status
+
+macOS is the main platform today. Android mirroring is written to run
 on Windows and Linux as well but has not been packaged or tested there yet;
 iOS mirroring on Windows/Linux is not implemented.
 
